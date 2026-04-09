@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/maitrey.bothare/ERP/**)",
+      "Bash(find /Users/maitrey.bothare/ERP Codes/Escape Room/backend -type f \\\\\\(-name *admin* -o -name *auth* \\\\\\))",
+      "Bash(find /Users/maitrey.bothare/ERP Codes/Escape Room/backend -not -path */node_modules/* -not -path */.next/* -not -path */.git/* -type f)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "Bash(npx eslint:*)"
+    ]
+  }
+}
