@@ -364,7 +364,7 @@ export default function GameUI() {
           setLeaderboardData(data.leaderboard);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [phase]);
 
   useEffect(() => {
@@ -444,19 +444,19 @@ export default function GameUI() {
 
     // --- HARDCODED ADMIN BYPASS ---
     if (player.name.trim().toLowerCase() === "admin" && player.email.trim().toLowerCase() === "admin@prompt.com") {
-        setCurrentAdminToken("mock-admin-token");
-        setPhase("admin-view");
-        setAdminTab("preview");
-        
-        // Mock Leaderboard Data
-        setAdminPlayers([
-          { playerId: "1", name: "Player A", email: "a@test.com", roundsPlayed: 5, timeTakenSec: 80, averageScore: 0.8, attemptsUsed: 6, completed: true },
-          { playerId: "2", name: "Player B", email: "b@test.com", roundsPlayed: 5, timeTakenSec: 70, averageScore: 0.7, attemptsUsed: 5, completed: true },
-          { playerId: "3", name: "Player C", email: "c@test.com", roundsPlayed: 3, timeTakenSec: 150, averageScore: 0.9, attemptsUsed: 3, completed: false },
-        ]);
-        
-        setBusy(false);
-        return;
+      setCurrentAdminToken("mock-admin-token");
+      setPhase("admin-view");
+      setAdminTab("preview");
+
+      // Mock Leaderboard Data
+      setAdminPlayers([
+        { playerId: "1", name: "Player A", email: "a@test.com", roundsPlayed: 5, timeTakenSec: 80, averageScore: 0.8, attemptsUsed: 6, completed: true },
+        { playerId: "2", name: "Player B", email: "b@test.com", roundsPlayed: 5, timeTakenSec: 70, averageScore: 0.7, attemptsUsed: 5, completed: true },
+        { playerId: "3", name: "Player C", email: "c@test.com", roundsPlayed: 3, timeTakenSec: 150, averageScore: 0.9, attemptsUsed: 3, completed: false },
+      ]);
+
+      setBusy(false);
+      return;
     }
 
     try {
@@ -518,7 +518,7 @@ export default function GameUI() {
     setDropdownSelections(newSelections);
 
     if (lastResult && !lastResult.passed) {
-        setLastResult(null);
+      setLastResult(null);
     }
 
     if (currentRoundData?.type === "CLASSIFY") {
@@ -562,8 +562,8 @@ export default function GameUI() {
 
   const loadAdminPlayers = async (token: string) => {
     if (token === "mock-admin-token") {
-        setAdminPlayers(prev => [...prev]); 
-        return;
+      setAdminPlayers(prev => [...prev]);
+      return;
     }
 
     try {
@@ -760,7 +760,7 @@ export default function GameUI() {
 
   return (
     <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
-      
+
       {/* Global Vignette and Scanlines */}
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>
       <div className="fixed inset-0 z-50 pointer-events-none scanline-overlay opacity-10 mix-blend-overlay"></div>
@@ -772,7 +772,7 @@ export default function GameUI() {
         <div className="w-full max-w-7xl terminal-panel p-6 md:p-8 rounded-xl relative">
           <div className="screen-glare absolute inset-0 rounded-xl" />
           <div className="relative z-10 flex flex-col gap-6">
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 border-b border-cyan-900/50 pb-4 gap-4">
               <div className="flex items-center gap-6 flex-wrap">
                 <h1 className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)] tracking-widest uppercase">Admin Terminal</h1>
@@ -815,7 +815,7 @@ export default function GameUI() {
 
                       <div className="flex gap-6 items-stretch flex-col md:flex-row mt-6">
                         <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          
+
                           {/* LEFT COLUMN: SCENARIO */}
                           <div className="space-y-4 flex flex-col max-h-[600px] overflow-y-auto custom-scrollbar pr-3 pb-4">
                             <div className="bg-slate-900/40 p-5 rounded border border-slate-700/50 shrink-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
@@ -837,16 +837,16 @@ export default function GameUI() {
                             )}
 
                             {previewRound.type !== "BONUS" && (
-                                <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
-                                  <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
-                                  </h3>
-                                  <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
-                                    {formatConstraints(previewRound.constraints).map((c, i) => (
-                                      <li key={i} className="pl-2 border-l border-cyan-800/50 ml-1">{c}</li>
-                                    ))}
-                                  </ul>
-                                </div>
+                              <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
+                                <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
+                                </h3>
+                                <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
+                                  {formatConstraints(previewRound.constraints).map((c, i) => (
+                                    <li key={i} className="pl-2 border-l border-cyan-800/50 ml-1">{c}</li>
+                                  ))}
+                                </ul>
+                              </div>
                             )}
 
                             {previewRound.input && (
@@ -899,19 +899,19 @@ export default function GameUI() {
                                 </div>
                               ) : previewRound.type === "BONUS" ? (
                                 <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90 flex flex-col gap-6">
-                                   <div className="flex flex-col gap-2">
-                                     <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
-                                       <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Inject Architecture
-                                     </h3>
-                                     <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Input meta-sequence..."></textarea>
-                                     <button disabled className="mt-2 bg-cyan-900/30 border border-cyan-800 text-cyan-600 px-4 py-2 rounded text-xs font-bold w-full uppercase tracking-widest">Compile AI Code</button>
-                                   </div>
-                                   <div className="flex flex-col gap-2 opacity-50">
-                                     <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest flex items-center gap-2">
-                                       <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded">Phase 2</span> Execute Payload
-                                     </h3>
-                                     <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Paste compiled code..."></textarea>
-                                   </div>
+                                  <div className="flex flex-col gap-2">
+                                    <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
+                                      <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Inject Architecture
+                                    </h3>
+                                    <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Input meta-sequence..."></textarea>
+                                    <button disabled className="mt-2 bg-cyan-900/30 border border-cyan-800 text-cyan-600 px-4 py-2 rounded text-xs font-bold w-full uppercase tracking-widest">Compile AI Code</button>
+                                  </div>
+                                  <div className="flex flex-col gap-2 opacity-50">
+                                    <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest flex items-center gap-2">
+                                      <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded">Phase 2</span> Execute Payload
+                                    </h3>
+                                    <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Paste compiled code..."></textarea>
+                                  </div>
                                 </div>
                               ) : (
                                 <textarea
@@ -921,7 +921,7 @@ export default function GameUI() {
                                 />
                               )}
                             </div>
-                            
+
                             {previewRound.type !== "CLASSIFY" && (
                               <button disabled className="bg-slate-900 border border-slate-800 text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase cursor-not-allowed">
                                 Initiate Override
@@ -952,8 +952,8 @@ export default function GameUI() {
                 <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                   {sortedAdminPlayers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
-                       <span className="text-3xl mb-3 opacity-50">📡</span>
-                       <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No active signals detected.</p>
+                      <span className="text-3xl mb-3 opacity-50">📡</span>
+                      <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No active signals detected.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded border border-slate-800">
@@ -972,20 +972,20 @@ export default function GameUI() {
                           {sortedAdminPlayers.map((p, idx) => {
                             const statusCfg = GAME_STATUS_CONFIG[p.gameStatus ?? ""] ?? { label: "In Progress", color: "text-slate-500" };
                             return (
-                            <tr key={p.playerId} className="hover:bg-cyan-950/20 transition-colors group">
-                              <td className="p-4">
-                                <div className="font-bold text-slate-300 flex items-center gap-3">
-                                  <span className="text-cyan-800 w-6 text-right">0{idx + 1}</span> 
-                                  <span className="group-hover:text-cyan-300 transition-colors">{p.name}</span>
-                                </div>
-                                {p.email && <div className="text-[10px] text-slate-600 ml-9 mt-1">{p.email}</div>}
-                              </td>
-                              <td className="p-4 text-slate-400 text-center">{p.roundsPlayed}</td>
-                              <td className="p-4 text-slate-400 text-center">{p.timeTakenSec}s</td>
-                              <td className="p-4 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
-                              <td className="p-4 text-slate-500 text-center">{p.attemptsUsed}</td>
-                              <td className={`p-4 font-bold text-center text-xs uppercase tracking-wider ${statusCfg.color}`}>{statusCfg.label}</td>
-                            </tr>
+                              <tr key={p.playerId} className="hover:bg-cyan-950/20 transition-colors group">
+                                <td className="p-4">
+                                  <div className="font-bold text-slate-300 flex items-center gap-3">
+                                    <span className="text-cyan-800 w-6 text-right">0{idx + 1}</span>
+                                    <span className="group-hover:text-cyan-300 transition-colors">{p.name}</span>
+                                  </div>
+                                  {p.email && <div className="text-[10px] text-slate-600 ml-9 mt-1">{p.email}</div>}
+                                </td>
+                                <td className="p-4 text-slate-400 text-center">{p.roundsPlayed}</td>
+                                <td className="p-4 text-slate-400 text-center">{p.timeTakenSec}s</td>
+                                <td className="p-4 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
+                                <td className="p-4 text-slate-500 text-center">{p.attemptsUsed}</td>
+                                <td className={`p-4 font-bold text-center text-xs uppercase tracking-wider ${statusCfg.color}`}>{statusCfg.label}</td>
+                              </tr>
                             );
                           })}
                         </tbody>
@@ -1007,13 +1007,13 @@ export default function GameUI() {
         <div className="w-full flex flex-col items-center justify-center text-center animate-in fade-in duration-1000 z-10">
           <div className="relative mb-8">
             <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full pointer-events-none"></div>
-            <img 
-              src="/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg" 
-              alt="Escape Room" 
+            <img
+              src="/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg"
+              alt="Escape Room"
               className="relative w-full max-w-md md:max-w-lg mx-auto rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800 object-cover"
             />
           </div>
-          
+
           <h1 className="text-6xl md:text-8xl font-black mb-12 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter uppercase">
             PROMPT <span className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]">WARS</span>
           </h1>
@@ -1034,12 +1034,12 @@ export default function GameUI() {
       {phase === "welcome" && (
         <div className="w-full max-w-3xl terminal-panel p-10 md:p-16 rounded-xl relative text-center">
           <div className="screen-glare absolute inset-0 rounded-xl" />
-          
+
           <div className="relative z-10">
             <div className="inline-block mb-6 border border-amber-900/50 bg-amber-950/20 px-4 py-1 rounded text-amber-500 text-xs font-mono font-bold tracking-[0.3em] uppercase">
               Classified Simulation
             </div>
-            
+
             <h1 className="text-5xl md:text-7xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter">
               PROMPT <span className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]">WARS</span>
             </h1>
@@ -1048,7 +1048,7 @@ export default function GameUI() {
             </p>
 
             <div className="space-y-6 text-slate-300 text-sm md:text-base leading-relaxed text-left max-w-2xl mx-auto">
-              
+
               <section className="bg-black/60 p-6 md:p-8 rounded border border-slate-700/50 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]">
                 <h2 className="text-lg font-mono font-bold text-cyan-400 mb-4 flex items-center gap-3 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
                   <span className="bg-cyan-500 w-2 h-2 rounded-full animate-pulse"></span> Mission Briefing
@@ -1098,7 +1098,7 @@ export default function GameUI() {
       {phase === "instructions" && (
         <div className="w-full max-w-5xl terminal-panel p-8 md:p-12 rounded-xl relative">
           <div className="screen-glare absolute inset-0 rounded-xl" />
-          
+
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-8 border-b border-slate-700 pb-6">
               <div>
@@ -1114,7 +1114,7 @@ export default function GameUI() {
 
             <div className="space-y-6 text-sm font-sans">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                
+
                 <section className="bg-black/50 p-6 rounded border border-red-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                   <h2 className="text-md font-mono font-bold text-red-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-red-900/30 pb-2">
                     ⏱️ Life Support Timer
@@ -1195,7 +1195,7 @@ export default function GameUI() {
       {phase === "register" && (
         <div className="w-full max-w-md terminal-panel p-8 md:p-10 rounded-xl relative shadow-[0_0_50px_rgba(0,0,0,0.8)]">
           <div className="screen-glare absolute inset-0 rounded-xl" />
-          
+
           <div className="relative z-10">
             <button onClick={() => setPhase("instructions")} className="absolute -top-2 -left-2 text-slate-500 hover:text-slate-300 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono">
               [ ABORT ]
@@ -1215,7 +1215,7 @@ export default function GameUI() {
                   ERR: {error}
                 </p>
               )}
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Identity / Name</label>
@@ -1256,18 +1256,17 @@ export default function GameUI() {
       {(phase === "playing" || phase === "bonus") && currentRoundData && (
         <div className="w-full max-w-7xl terminal-panel p-6 md:p-8 rounded-xl relative shadow-[0_0_50px_rgba(0,0,0,0.9)]">
           <div className="screen-glare absolute inset-0 rounded-xl" />
-          
+
           <div className="relative z-10 flex flex-col gap-6">
-            
+
             {/* GAME HEADER */}
             <div className="flex justify-between items-end mb-2 border-b border-slate-700 pb-4 gap-4">
               <h2 className="text-xl md:text-2xl font-bold text-slate-200 font-mono drop-shadow-md">{headerTitle}</h2>
               <div
-                className={`text-2xl md:text-3xl font-mono font-bold shrink-0 px-4 py-1 rounded border ${
-                  timeLeftSec < 60
+                className={`text-2xl md:text-3xl font-mono font-bold shrink-0 px-4 py-1 rounded border ${timeLeftSec < 60
                     ? "text-red-500 bg-red-950/30 border-red-900/50 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"
                     : "text-amber-500 bg-amber-950/20 border-amber-900/30 drop-shadow-[0_0_5px_rgba(245,158,11,0.4)]"
-                }`}
+                  }`}
               >
                 {formatTime(timeLeftSec)}
               </div>
@@ -1277,14 +1276,14 @@ export default function GameUI() {
             {error && <p className="text-red-400 font-mono text-xs bg-red-950/30 border border-red-900/50 p-3 rounded">ERR: {error}</p>}
 
             <div className="flex gap-6 items-stretch flex-col md:flex-row">
-              
+
               {/* LEFT COLUMN: CONTEXT */}
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div
                   className="space-y-4 flex flex-col max-h-[600px] overflow-y-auto custom-scrollbar pr-3 pb-4 select-none"
-                  onCopy={(e) => { 
-                    e.preventDefault(); 
-                    void reportViolation("COPY_PASTE"); 
+                  onCopy={(e) => {
+                    e.preventDefault();
+                    void reportViolation("COPY_PASTE");
                   }}
                   onContextMenu={(e) => e.preventDefault()}
                 >
@@ -1307,16 +1306,16 @@ export default function GameUI() {
                   )}
 
                   {currentRoundData.type !== "BONUS" && (
-                      <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
-                        <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
-                        </h3>
-                        <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
-                          {formatConstraints(currentRoundData.constraints).map((c, i) => (
-                            <li key={i} className="pl-2 border-l border-cyan-800/50 ml-1">{c}</li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
+                      <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
+                      </h3>
+                      <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
+                        {formatConstraints(currentRoundData.constraints).map((c, i) => (
+                          <li key={i} className="pl-2 border-l border-cyan-800/50 ml-1">{c}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
 
                   {currentRoundData.input && (
@@ -1349,7 +1348,7 @@ export default function GameUI() {
                         {attemptsRemaining < 0 ? "Attempts: Unrestricted" : `Sec-Attempts: ${attemptsRemaining}`}
                       </span>
                     </div>
-                    
+
                     {currentRoundData.type === "CLASSIFY" ? (
                       <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90">
                         <h3 className="text-sm font-bold text-amber-500 mb-2 uppercase tracking-widest">Identify Anomaly Signatures</h3>
@@ -1381,9 +1380,9 @@ export default function GameUI() {
                           })}
                         </div>
                       </div>
-                    ) :currentRoundData.type === "BONUS" ? (
+                    ) : currentRoundData.type === "BONUS" ? (
                       <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90 flex flex-col gap-6">
-                        
+
                         <div className="flex flex-col gap-2">
                           <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
                             <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Inject Architecture
@@ -1431,7 +1430,7 @@ export default function GameUI() {
                             value={finalPromptInput}
                             onChange={(e) => setFinalPromptInput(e.target.value)}
                             disabled={inputLocked || !generatedPrompt}
-                            // ANTI-CHEAT OVERRIDE: allow paste here
+                          // ANTI-CHEAT OVERRIDE: allow paste here
                           />
                         </div>
                       </div>
@@ -1456,9 +1455,9 @@ export default function GameUI() {
                       type="button"
                       onClick={() => void submitPrompt()}
                       disabled={
-                        inputLocked || 
-                        (currentRoundData.type === "BONUS" 
-                          ? !metaPromptInput.trim() || !finalPromptInput.trim() 
+                        inputLocked ||
+                        (currentRoundData.type === "BONUS"
+                          ? !metaPromptInput.trim() || !finalPromptInput.trim()
                           : !promptInput.trim())
                       }
                       className="bg-slate-800 hover:bg-cyan-900/50 border border-slate-700 hover:border-cyan-700 text-slate-400 hover:text-cyan-300 disabled:bg-black/50 disabled:border-slate-800 disabled:text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase transition-all shadow-lg"
@@ -1506,14 +1505,14 @@ export default function GameUI() {
       {phase === "finished" && (
         <div className="text-center py-12 w-full max-w-2xl z-10">
           <h1 className="text-5xl font-black mb-8 font-mono text-transparent bg-clip-text bg-gradient-to-b from-slate-200 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter uppercase">
-            Simulation<br/>Terminated
+            Simulation<br />Terminated
           </h1>
           {message && (
             <p className="text-amber-500 font-mono tracking-widest uppercase text-sm mb-6 bg-amber-950/30 inline-block px-4 py-2 border border-amber-900/50 rounded">{message}</p>
           )}
           <div className="terminal-panel p-8 rounded-xl text-left border border-slate-700 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
             <div className="screen-glare absolute inset-0 rounded-xl" />
-            
+
             <div className="relative z-10">
               <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
                 <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Debriefing Report
@@ -1619,15 +1618,12 @@ export default function GameUI() {
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .escape-bg {
-            background-color: #000;
-            background-image: 
-                radial-gradient(circle at 50% 30%, rgba(15, 23, 42, 0.4) 0%, rgba(0, 0, 0, 0.95) 100%),
-                url('/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
+            background-color: #050505;
+            background-image:
+                radial-gradient(circle at 50% 30%, rgba(15, 23, 42, 0.4) 0%, rgba(0, 0, 0, 0.95) 100%);
         }
         .grid-overlay {
             background-size: 40px 40px;
