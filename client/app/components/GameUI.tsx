@@ -1062,7 +1062,7 @@ export default function GameUI() {
                 <div className="bg-amber-950/20 border border-amber-900/50 p-4 rounded text-sm font-mono">
                   <p className="text-amber-500/90">
                     <strong className="text-amber-400 block mb-1">WARNING: HIDDEN DIRECTIVE</strong>
-                    Operatives who clear all 5 sectors before life support failure will unlock the classified <strong className="text-amber-300">Meta-Prompting Protocol</strong>.
+                    Operatives who clear all 5 sectors before life support failure will unlock the classified.
                   </p>
                 </div>
               </section>
