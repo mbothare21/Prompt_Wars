@@ -6,6 +6,10 @@ import { savePlayer } from "@/lib/playerStore";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
+type GlobalWithCache = typeof globalThis & { _roundsCache?: ReturnType<typeof generateRounds> };
+const g = globalThis as GlobalWithCache;
+const roundsCache = g._roundsCache ?? (g._roundsCache = generateRounds());
+
 export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const adminToken = authHeader.startsWith("Bearer ")
@@ -17,7 +21,7 @@ export async function POST(req: Request) {
     try {
       const body = (await req.json()) as Record<string, unknown>;
       const roundNumber = Number(body.roundNumber ?? NaN);
-      const rounds = generateRounds();
+      const rounds = roundsCache;
       if (!Number.isInteger(roundNumber) || roundNumber < 1 || roundNumber > rounds.length) {
         return Response.json({ error: "Invalid roundNumber" });
       }

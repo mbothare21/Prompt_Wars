@@ -30,5 +30,7 @@ const PlayerSchema = new Schema({
   completedAt: Date,
 });
 
+PlayerSchema.index({ email: 1, createdAt: 1 });
+
 export default mongoose.models.Player ||
   mongoose.model("Player", PlayerSchema);
