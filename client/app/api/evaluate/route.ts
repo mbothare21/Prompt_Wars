@@ -2,6 +2,7 @@ import { getSession, updateSession } from "@/lib/gameStore";
 import { isTimeUp } from "@/lib/time";
 import { evaluateRound, evaluateMetaBonusRound } from "@/lib/evaluator";
 import { savePlayer } from "@/lib/playerStore";
+import type { GameSession } from "@/lib/types";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
@@ -28,7 +29,7 @@ function withTimeout<T>(promise: Promise<T>, ms = 3000): Promise<T> {
 function flushToDB(
   email: string,
   fields: Record<string, unknown>,
-  pendingRounds: NonNullable<ReturnType<typeof getSession>>["pendingRounds"],
+  pendingRounds: GameSession["pendingRounds"],
   tag: string
 ) {
   void (async () => {
