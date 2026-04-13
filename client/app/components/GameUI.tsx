@@ -431,6 +431,32 @@ export default function GameUI() {
     };
   }, []);
 
+  const loadAdminPlayers = async (token: string) => {
+    try {
+      const res = await fetch("/api/admin/leaderboard", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      let data: { players?: unknown[] };
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        setError("Bad response loading players.");
+        return;
+      }
+
+      if (!res.ok) {
+        setError(`Failed to load players (${res.status}).`);
+        return;
+      }
+
+      setAdminPlayers((data.players ?? []) as AdminPlayer[]);
+    } catch {
+      setError("Network error loading players.");
+    }
+  };
+
   const startGame = async () => {
     if (!player.name.trim() || !player.email.trim()) {
       setError("Please enter your name and email.");
@@ -442,21 +468,26 @@ export default function GameUI() {
     setBusy(true);
     allowTimeUpRef.current = false;
 
-    // --- HARDCODED ADMIN BYPASS ---
-    if (player.name.trim().toLowerCase() === "admin" && player.email.trim().toLowerCase() === "admin@prompt.com") {
-      setCurrentAdminToken("mock-admin-token");
-      setPhase("admin-view");
-      setAdminTab("preview");
-
-      // Mock Leaderboard Data
-      setAdminPlayers([
-        { playerId: "1", name: "Player A", email: "a@test.com", roundsPlayed: 5, timeTakenSec: 80, averageScore: 0.8, attemptsUsed: 6, completed: true },
-        { playerId: "2", name: "Player B", email: "b@test.com", roundsPlayed: 5, timeTakenSec: 70, averageScore: 0.7, attemptsUsed: 5, completed: true },
-        { playerId: "3", name: "Player C", email: "c@test.com", roundsPlayed: 3, timeTakenSec: 150, averageScore: 0.9, attemptsUsed: 3, completed: false },
-      ]);
-
-      setBusy(false);
-      return;
+    // --- ADMIN LOGIN ---
+    try {
+      const adminRes = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: player.name.trim(), email: player.email.trim() }),
+      });
+      if (adminRes.ok) {
+        const adminData = (await adminRes.json()) as { token?: string };
+        if (adminData.token) {
+          setCurrentAdminToken(adminData.token);
+          setPhase("admin-view");
+          setAdminTab("preview");
+          await loadAdminPlayers(adminData.token);
+          setBusy(false);
+          return;
+        }
+      }
+    } catch {
+      // not admin — continue with normal player flow
     }
 
     try {
@@ -558,37 +589,6 @@ export default function GameUI() {
     void navigator.clipboard.writeText(generatedPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const loadAdminPlayers = async (token: string) => {
-    if (token === "mock-admin-token") {
-      setAdminPlayers(prev => [...prev]);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/admin/leaderboard", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      let data: { players?: unknown[] };
-      try {
-        data = (await res.json()) as typeof data;
-      } catch {
-        setError("Bad response loading players.");
-        return;
-      }
-
-      if (!res.ok) {
-        setError(`Failed to load players (${res.status}).`);
-        return;
-      }
-
-      setAdminPlayers((data.players ?? []) as AdminPlayer[]);
-    } catch {
-      setError("Network error loading players.");
-    }
   };
 
   const buildLastResult = (finalScore: number, passed: boolean): LastResult => ({
