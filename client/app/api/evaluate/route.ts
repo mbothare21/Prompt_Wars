@@ -173,17 +173,20 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = await withTimeout(
-    round.type === "BONUS"
-      ? evaluateMetaBonusRound({
+  const result = round.type === "BONUS"
+    ? await withTimeout(
+        evaluateMetaBonusRound({
           metaPrompt: metaPrompt ?? "",
           finalPrompt: finalPrompt ?? "",
           basePrompt: round.input ?? "",
           targetOutput: round.targetOutput ?? round.expectedOutput ?? "",
-        })
-      : evaluateRound(round, prompt ?? "", answers),
-    3000
-  );
+        }),
+        3000
+      )
+    : await withTimeout(
+        evaluateRound(round, prompt ?? "", answers),
+        3000
+      );
 
   let finalScore = result.finalScore;
   let progress = result.progress;
