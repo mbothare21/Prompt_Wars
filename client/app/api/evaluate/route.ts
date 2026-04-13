@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     finalPrompt?: string;
   };
 
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
 
   if (!session) {
     return Response.json({ error: "Invalid session" });
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "TIME_OVER";
     savePlayer(session.player);
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
 
     if (session.player.email) {
       const timeTaken = Date.now() - session.startTime;
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
 
   if (session.currentRound > 5 && timeLeft > 0 && !session.bonusUnlocked) {
     session.bonusUnlocked = true;
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
     return Response.json({ status: "BONUS_AVAILABLE", remainingTime: timeLeft });
   }
 
@@ -146,7 +146,7 @@ export async function POST(req: Request) {
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "FAILED";
     savePlayer(session.player);
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
 
     if (session.player.email) {
       const timeTaken = Date.now() - session.startTime;
@@ -236,7 +236,7 @@ export async function POST(req: Request) {
         : "COMPLETED" as const;
       session.player.gameStatus = completedStatus;
       savePlayer(session.player);
-      updateSession(sessionId, session);
+      await updateSession(sessionId, session);
 
       if (session.player.email) {
         const timeTaken = Date.now() - session.startTime;
@@ -266,7 +266,7 @@ export async function POST(req: Request) {
       });
     }
 
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
     return Response.json({
       status: "ROUND_PASSED",
       nextRound: session.currentRound,

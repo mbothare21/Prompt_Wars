@@ -1,6 +1,7 @@
 import { getOpenAI } from "./openai";
 import { getSimilarity } from "./similarity";
 import type { Round } from "./types";
+import { cacheKey, cacheGet, cacheSet } from "./cache";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,33 +24,6 @@ async function callLLM<T>(promise: Promise<T>, ms = 3000): Promise<T> {
       setTimeout(() => reject(new Error("LLM Timeout")), ms)
     ),
   ]);
-}
-
-// ── Result cache ──────────────────────────────────────────────────────────────
-
-const MAX_CACHE = 200;
-const llmCache = new Map<string, unknown>();
-
-function cacheKey(...parts: string[]): string {
-  const str = parts.join("\x00");
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h) ^ str.charCodeAt(i);
-    h = h >>> 0;
-  }
-  return h.toString(36);
-}
-
-function cacheGet<T>(key: string): T | undefined {
-  return llmCache.get(key) as T | undefined;
-}
-
-function cacheSet(key: string, value: unknown) {
-  if (llmCache.size >= MAX_CACHE) {
-    const firstKey = llmCache.keys().next().value;
-    if (firstKey !== undefined) llmCache.delete(firstKey);
-  }
-  llmCache.set(key, value);
 }
 
 // ── Heuristics (no LLM) ───────────────────────────────────────────────────────

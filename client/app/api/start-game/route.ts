@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     try {
       const existingSessionId = await getBoundSessionIdForEmail(email);
       if (existingSessionId) {
-        const existing = getSession(existingSessionId);
+        const existing = await getSession(existingSessionId);
 
         if (existing?.completed) {
           return Response.json({
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     penaltyTimeSec: 0,
   };
 
-  createSession(sessionId, session);
+  await createSession(sessionId, session);
 
   if (email) {
     await Promise.all([

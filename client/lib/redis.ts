@@ -1,9 +1,10 @@
 import Redis from "ioredis";
+import type { GameSession } from "./types";
 
 const url = process.env.REDIS_URL?.trim();
 
 /**
- * Redis client when `REDIS_URL` is set; otherwise `null` (resume/bind skipped).
+ * Redis client when `REDIS_URL` is set; otherwise `null` (all ops become no-ops).
  * Uses lazy connect so builds/tests run without a server until first command.
  */
 export const redis: Redis | null =
@@ -14,10 +15,10 @@ export const redis: Redis | null =
       })
     : null;
 
-const playerKey = (email: string) => `player:${email}`;
+// ── Email → SessionId binding ─────────────────────────────────────────────────
 
-/** Keep email→session mapping bounded (hours). */
-const BINDING_TTL_SEC = 12 * 60 * 60;
+const playerKey = (email: string) => `player:${email}`;
+const BINDING_TTL_SEC = 12 * 60 * 60; // 12 hours
 
 export async function getBoundSessionIdForEmail(
   email: string
@@ -41,6 +42,49 @@ export async function clearEmailSessionBinding(
   if (!email || !redis) return;
   try {
     await redis.del(playerKey(email));
+  } catch {
+    /* non-fatal */
+  }
+}
+
+// ── Session storage ───────────────────────────────────────────────────────────
+
+const sessionKey = (id: string) => `session:${id}`;
+const SESSION_TTL_SEC = 75 * 60; // 75 min — game limit (10 min) + generous buffer
+
+export async function getSessionFromRedis(
+  id: string
+): Promise<GameSession | null> {
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(sessionKey(id));
+    return raw ? (JSON.parse(raw) as GameSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setSessionInRedis(
+  id: string,
+  data: GameSession,
+  keepTTL = false
+): Promise<void> {
+  if (!redis) return;
+  try {
+    if (keepTTL) {
+      await redis.set(sessionKey(id), JSON.stringify(data), "KEEPTTL");
+    } else {
+      await redis.set(sessionKey(id), JSON.stringify(data), "EX", SESSION_TTL_SEC);
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
+
+export async function deleteSessionFromRedis(id: string): Promise<void> {
+  if (!redis) return;
+  try {
+    await redis.del(sessionKey(id));
   } catch {
     /* non-fatal */
   }

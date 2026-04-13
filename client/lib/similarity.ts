@@ -1,4 +1,5 @@
 import { getOpenAI } from "./openai";
+import { cacheKey, cacheGet, cacheSet } from "./cache";
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
@@ -18,6 +19,10 @@ export async function getSimilarity(
   output: string,
   expected: string
 ): Promise<number> {
+  const key = cacheKey("similarity", output, expected);
+  const cached = cacheGet<number>(key);
+  if (cached !== undefined) return cached;
+
   const [e1, e2] = await Promise.all([
     getOpenAI().embeddings.create({
       model: "text-embedding-3-small",
@@ -29,8 +34,11 @@ export async function getSimilarity(
     }),
   ]);
 
-  return cosineSimilarity(
+  const score = cosineSimilarity(
     e1.data[0].embedding,
     e2.data[0].embedding
   );
+
+  cacheSet(key, score);
+  return score;
 }

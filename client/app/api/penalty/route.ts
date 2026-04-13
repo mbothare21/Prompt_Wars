@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     violationType: "TAB_SWITCH" | "COPY_PASTE";
   };
 
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     return Response.json({ error: "Invalid session" });
   }
@@ -28,30 +28,31 @@ export async function POST(req: Request) {
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "DISQUALIFIED";
     savePlayer(session.player);
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
 
-    // Update disqualification in MongoDB
     if (session.player.email) {
-      try {
-        await connectDB();
-        const timeTaken = Date.now() - session.startTime;
-        const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-        await PlayerModel.updateOne(
-          { email: session.player.email },
-          {
-            $set: {
-              roundsPlayed: session.player.roundsPlayed,
-              timeTaken,
-              avgAccuracy: session.player.averageScore,
-              attemptsTaken: totalAttempts,
-              gameStatus: "DISQUALIFIED",
-              completedAt: new Date(),
-            },
-          }
-        );
-      } catch (e) {
-        console.error("[penalty] MongoDB disqualify error:", e);
-      }
+      const timeTaken = Date.now() - session.startTime;
+      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
+      void (async () => {
+        try {
+          await connectDB();
+          await PlayerModel.updateOne(
+            { email: session.player.email },
+            {
+              $set: {
+                roundsPlayed: session.player.roundsPlayed,
+                timeTaken,
+                avgAccuracy: session.player.averageScore,
+                attemptsTaken: totalAttempts,
+                gameStatus: "DISQUALIFIED",
+                completedAt: new Date(),
+              },
+            }
+          );
+        } catch (e) {
+          console.error("[penalty] MongoDB disqualify error:", e);
+        }
+      })();
     }
 
     return Response.json({
@@ -62,12 +63,10 @@ export async function POST(req: Request) {
     });
   }
 
-  updateSession(sessionId, session);
+  await updateSession(sessionId, session);
 
-  const effectiveLimit =
-    session.timeLimit - session.penaltyTimeSec * 1000;
-  const remainingTime =
-    effectiveLimit - (Date.now() - session.startTime);
+  const effectiveLimit = session.timeLimit - session.penaltyTimeSec * 1000;
+  const remainingTime = effectiveLimit - (Date.now() - session.startTime);
 
   return Response.json({
     status: "PENALTY_APPLIED",

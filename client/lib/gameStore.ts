@@ -1,21 +1,28 @@
 // /lib/gameStore.ts
 import type { GameSession } from "./types";
+import {
+  getSessionFromRedis,
+  setSessionInRedis,
+  deleteSessionFromRedis,
+} from "./redis";
 
-const sessions = new Map<string, GameSession>();
+export async function createSession(id: string, data: GameSession): Promise<void> {
+  await setSessionInRedis(id, data, false);
+}
 
-export const createSession = (id: string, data: GameSession) => {
-  sessions.set(id, data);
-};
+export async function getSession(id: string): Promise<GameSession | null> {
+  return getSessionFromRedis(id);
+}
 
-export const getSession = (id: string) => {
-  return sessions.get(id);
-};
+export async function updateSession(id: string, data: GameSession): Promise<void> {
+  await setSessionInRedis(id, data, true);
+}
 
-export const updateSession = (id: string, data: GameSession) => {
-  sessions.set(id, data);
-};
+export async function deleteSession(id: string): Promise<void> {
+  await deleteSessionFromRedis(id);
+}
 
-/** Clears in-memory sessions (for tests). */
-export function clearSessions() {
-  sessions.clear();
+/** No-op in Redis-backed store; kept for test compatibility. */
+export function clearSessions(): void {
+  // sessions are in Redis — use deleteSession per ID or flush Redis manually in tests
 }

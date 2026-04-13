@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
   const { sessionId } = await req.json();
 
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
 
   if (!session) {
     return Response.json({ error: "Invalid session" });
@@ -79,29 +79,31 @@ export async function POST(req: Request) {
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "TIME_OVER";
     savePlayer(session.player);
-    updateSession(sessionId, session);
+    await updateSession(sessionId, session);
 
     if (session.player.email) {
-      try {
-        await connectDB();
-        const timeTaken = Date.now() - session.startTime;
-        const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-        await PlayerModel.updateOne(
-          { email: session.player.email },
-          {
-            $set: {
-              roundsPlayed: session.player.roundsPlayed,
-              timeTaken,
-              avgAccuracy: session.player.averageScore,
-              attemptsTaken: totalAttempts,
-              gameStatus: "TIME_OVER",
-              completedAt: new Date(),
-            },
-          }
-        );
-      } catch (e) {
-        console.error("[get-round] MongoDB time-up error:", e);
-      }
+      const timeTaken = Date.now() - session.startTime;
+      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
+      void (async () => {
+        try {
+          await connectDB();
+          await PlayerModel.updateOne(
+            { email: session.player.email },
+            {
+              $set: {
+                roundsPlayed: session.player.roundsPlayed,
+                timeTaken,
+                avgAccuracy: session.player.averageScore,
+                attemptsTaken: totalAttempts,
+                gameStatus: "TIME_OVER",
+                completedAt: new Date(),
+              },
+            }
+          );
+        } catch (e) {
+          console.error("[get-round] MongoDB time-up error:", e);
+        }
+      })();
     }
 
     return Response.json({

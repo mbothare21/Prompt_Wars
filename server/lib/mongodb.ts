@@ -16,12 +16,19 @@ if (!cached) {
 }
 
 export const connectDB = async () => {
+  if (!process.env.MONGO_URI) {
+    console.warn("[mongodb] MONGO_URI not set — skipping DB connection");
+    return null;
+  }
+
   if (cached!.conn) return cached!.conn;
 
   if (!cached!.promise) {
-    cached!.promise = mongoose.connect(process.env.MONGO_URI!, {
-      maxPoolSize: 50,
+    cached!.promise = mongoose.connect(process.env.MONGO_URI, {
+      maxPoolSize: 100,
       serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 30000,
     });
   }
 
