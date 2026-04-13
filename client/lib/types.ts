@@ -77,4 +77,11 @@ export type GameSession = {
 
   violations: number;
   penaltyTimeSec: number;
+  pendingRounds?: {
+    round: number;
+    attempts: number;
+    score: number;
+    prompt: unknown;
+    output: string;
+  }[];
 };

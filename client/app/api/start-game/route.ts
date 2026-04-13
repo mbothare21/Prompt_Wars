@@ -104,37 +104,35 @@ export async function POST(req: Request) {
   createSession(sessionId, session);
 
   if (email) {
-    try {
-      await bindEmailToSessionId(email, sessionId);
-    } catch (e) {
-      console.error("[start-game] Redis bind error:", e);
-    }
-  }
-
-  // Persist player to MongoDB
-  if (email) {
-    try {
-      await connectDB();
-      await Player.updateOne(
-        { email },
-        {
-          $setOnInsert: {
-            name,
-            email,
-            roundsPlayed: 0,
-            timeTaken: 0,
-            avgAccuracy: 0,
-            attemptsTaken: 0,
-            gameStatus: "COMPLETED",
-            rounds: [],
-            createdAt: new Date(),
-          },
-        },
-        { upsert: true }
-      );
-    } catch (e) {
-      console.error("[start-game] MongoDB error:", e);
-    }
+    await Promise.all([
+      bindEmailToSessionId(email, sessionId).catch((e) =>
+        console.error("[start-game] Redis bind error:", e)
+      ),
+      (async () => {
+        try {
+          await connectDB();
+          await Player.updateOne(
+            { email },
+            {
+              $setOnInsert: {
+                name,
+                email,
+                roundsPlayed: 0,
+                timeTaken: 0,
+                avgAccuracy: 0,
+                attemptsTaken: 0,
+                gameStatus: "COMPLETED",
+                rounds: [],
+                createdAt: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+        } catch (e) {
+          console.error("[start-game] MongoDB error:", e);
+        }
+      })(),
+    ]);
   }
 
   return Response.json({

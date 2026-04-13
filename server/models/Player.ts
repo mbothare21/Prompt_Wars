@@ -31,6 +31,7 @@ const PlayerSchema = new Schema({
 });
 
 PlayerSchema.index({ email: 1, createdAt: 1 });
+PlayerSchema.index({ roundsPlayed: -1, avgAccuracy: -1 });
 
 export default mongoose.models.Player ||
   mongoose.model("Player", PlayerSchema);
