@@ -1,4 +1,5 @@
 import { getSession, updateSession } from "@/lib/gameStore";
+import { ATTEMPT_LIMITS, PASS_THRESHOLDS } from "@/lib/gameConstants";
 import { isTimeUp } from "@/lib/time";
 import { evaluateRound, evaluateMetaBonusRound } from "@/lib/evaluator";
 import { savePlayer } from "@/lib/playerStore";
@@ -6,16 +7,9 @@ import type { GameSession } from "@/lib/types";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
-const BONUS_SCORE_THRESHOLD = 0.92;
+export const runtime = "nodejs";
 
-const PASS_THRESHOLDS: Record<number, number> = {
-  1: 1.00,
-  2: 0.70,
-  3: 0.65,
-  4: 0.60,
-  5: 0.60,
-  6: 0.60,
-};
+const BONUS_SCORE_THRESHOLD = 0.92;
 
 function withTimeout<T>(promise: Promise<T>, ms = 3000): Promise<T> {
   return Promise.race([
@@ -137,7 +131,6 @@ export async function POST(req: Request) {
 
   session.attemptsPerRound[roundNum] = (session.attemptsPerRound[roundNum] || 0) + 1;
 
-  const ATTEMPT_LIMITS: Record<number, number> = { 4: 3, 5: 2 };
   const maxAttempts = ATTEMPT_LIMITS[roundNum] ?? Infinity;
 
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {

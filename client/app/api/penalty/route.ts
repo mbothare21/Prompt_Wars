@@ -3,6 +3,8 @@ import { savePlayer } from "@/lib/playerStore";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   const { sessionId, violationType } = (await req.json()) as {
     sessionId: string;

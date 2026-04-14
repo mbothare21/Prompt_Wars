@@ -1,20 +1,60 @@
 @import "tailwindcss";
 
+.escape-bg {
+  background-color: #050505;
+  background-image: radial-gradient(
+    circle at 50% 30%,
+    rgba(15, 23, 42, 0.4) 0%,
+    rgba(0, 0, 0, 0.95) 100%
+  );
+}
+
+.grid-overlay {
+  background-size: 40px 40px;
+  background-image:
+    linear-gradient(to right, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+.scanline-overlay {
+  background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.25) 51%);
+  background-size: 100% 4px;
+}
+
+.terminal-panel {
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(2, 6, 23, 0.95) 100%);
+  backdrop-filter: blur(10px);
+}
+
+.screen-glare {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 0%, transparent 20%, transparent 100%);
+  pointer-events: none;
+}
+
+.list-square {
+  list-style-type: square;
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgb(75 85 99) rgb(17 24 39);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgb(17 24 39);
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgb(75 85 99);
+  background: rgba(51, 65, 85, 0.8);
   border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 1);
 }

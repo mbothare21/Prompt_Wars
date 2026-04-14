@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
+export const runtime = "nodejs";
+
 type PlayerDoc = {
   _id: { toString(): string };
   name?: string;

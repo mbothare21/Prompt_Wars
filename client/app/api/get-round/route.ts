@@ -1,14 +1,13 @@
 import { getSession, updateSession } from "@/lib/gameStore";
 import { isTimeUp } from "@/lib/time";
-import { generateRounds } from "@/lib/generateRounds";
 import { verifyAdminToken } from "@/lib/admin";
 import { savePlayer } from "@/lib/playerStore";
+import { ATTEMPT_LIMITS } from "@/lib/gameConstants";
+import { getRounds } from "@/lib/roundsStore";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
-type GlobalWithCache = typeof globalThis & { _roundsCache?: ReturnType<typeof generateRounds> };
-const g = globalThis as GlobalWithCache;
-const roundsCache = g._roundsCache ?? (g._roundsCache = generateRounds());
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
@@ -21,13 +20,13 @@ export async function POST(req: Request) {
     try {
       const body = (await req.json()) as Record<string, unknown>;
       const roundNumber = Number(body.roundNumber ?? NaN);
-      const rounds = roundsCache;
+      const rounds = getRounds();
       if (!Number.isInteger(roundNumber) || roundNumber < 1 || roundNumber > rounds.length) {
         return Response.json({ error: "Invalid roundNumber" });
       }
 
       const round = rounds[roundNumber - 1];
-      const maxAttemptsThisRound = ({ 4: 3, 5: 2 }[roundNumber] ?? -1);
+      const maxAttemptsThisRound = ATTEMPT_LIMITS[roundNumber] ?? -1;
 
       return Response.json({
         status: "ADMIN",
@@ -121,7 +120,7 @@ export async function POST(req: Request) {
 
   const round = session.rounds[session.currentRound - 1];
   const roundNum = session.currentRound;
-  const maxAttemptsThisRound = ({ 4: 3, 5: 2 }[roundNum] ?? -1);
+  const maxAttemptsThisRound = ATTEMPT_LIMITS[roundNum] ?? -1;
 
   return Response.json({
     status: "ACTIVE",

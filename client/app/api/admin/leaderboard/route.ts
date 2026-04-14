@@ -2,6 +2,8 @@ import { verifyAdminToken } from "@/lib/admin";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
+export const runtime = "nodejs";
+
 type PlayerDoc = {
   _id: { toString(): string };
   name?: string;

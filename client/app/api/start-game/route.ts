@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { createSession, getSession } from "@/lib/gameStore";
-import { generateRounds } from "@/lib/generateRounds";
+import { getRounds } from "@/lib/roundsStore";
 import {
   bindEmailToSessionId,
   clearEmailSessionBinding,
@@ -10,6 +10,8 @@ import { isTimeUp } from "@/lib/time";
 import type { GameSession } from "@/lib/types";
 import { connectDB } from "@server/lib/mongodb";
 import Player from "@server/models/Player";
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   let name = "Guest";
@@ -83,7 +85,7 @@ export async function POST(req: Request) {
     },
 
     currentRound: 1,
-    rounds: generateRounds(),
+    rounds: getRounds(),
 
     startTime: Date.now(),
     timeLimit: 10 * 60 * 1000,

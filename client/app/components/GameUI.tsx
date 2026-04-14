@@ -1,35 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generateRounds } from "@/lib/generateRounds";
+import Image from "next/image";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  MAIN_ROUNDS,
+  PASS_ADVANCE_MS,
+  SESSION_POLL_INTERVAL_MS,
+  TOTAL_ROUNDS,
+  getTargetScore,
+} from "@/lib/gameConstants";
+import type { PromptPart } from "@/lib/types";
 
-const MAIN_ROUNDS = 5;
-const PASS_THRESHOLDS: Record<number, number> = {
-  1: 1.00,  // MCQ — all 4 correct
-  2: 0.70,
-  3: 0.65,
-  4: 0.60,
-  5: 0.60,
-  6: 0.60,  // bonus
-};
-function getTargetScore(round: number): number {
-  return (PASS_THRESHOLDS[round] ?? 0.60) * 100;
-}
-const PASS_ADVANCE_MS = 2500;
-
-// Added "splash" to GamePhase
 type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "playing" | "bonus" | "finished";
 
 type RoundPayload = {
   status: string;
   roundNumber?: number;
   roundType?: string;
+  instruction?: string | null;
+  originalPrompt?: string | null;
+  input?: string | null;
+  expectedOutput?: string | null;
+  constraints?: unknown;
+  promptParts?: PromptPart[] | null;
   attemptsThisRound?: number;
   maxAttemptsThisRound?: number;
   remainingTime?: number;
   reason?: string;
   bonusUnlocked?: boolean;
   error?: string;
+};
+
+type RoundViewData = {
+  type?: string;
+  instruction?: string | null;
+  originalPrompt?: string | null;
+  input?: string | null;
+  expectedOutput?: string | null;
+  constraints?: unknown;
+  promptParts?: PromptPart[] | null;
 };
 
 type LastResult = {
@@ -100,10 +117,6 @@ function formatConstraints(constraints: unknown): string[] {
 }
 
 export default function GameUI() {
-  const roundsTemplate = useMemo(() => generateRounds(), []);
-  const TOTAL_ROUNDS = roundsTemplate.length;
-
-  // Start with the splash screen
   const [phase, setPhase] = useState<GamePhase>("splash");
   const [player, setPlayer] = useState({ name: "", email: "" });
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -166,8 +179,8 @@ export default function GameUI() {
     timeLimit?: number;
   };
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
-
-  const currentRoundData = roundsTemplate[roundNumber - 1];
+  const [currentRoundData, setCurrentRoundData] = useState<RoundViewData | null>(null);
+  const [adminPreviewRound, setAdminPreviewRound] = useState<RoundViewData | null>(null);
 
   const sessionRef = useRef<string | null>(null);
   sessionRef.current = sessionId;
@@ -178,19 +191,31 @@ export default function GameUI() {
   const passAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const applyRoundPayload = useCallback((data: RoundPayload) => {
-    if (typeof data.roundNumber === "number") {
-      setRoundNumber(data.roundNumber);
-    }
-    if (typeof data.remainingTime === "number") {
-      setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
-    }
     const max = data.maxAttemptsThisRound ?? 3;
     const used = data.attemptsThisRound ?? 0;
-    if (max < 0) {
-      setAttemptsRemaining(-1); // unlimited
-    } else {
-      setAttemptsRemaining(Math.max(0, max - used));
-    }
+
+    startTransition(() => {
+      if (typeof data.roundNumber === "number") {
+        setRoundNumber(data.roundNumber);
+      }
+      if (typeof data.remainingTime === "number") {
+        setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
+      }
+      setCurrentRoundData({
+        type: data.roundType,
+        instruction: data.instruction,
+        originalPrompt: data.originalPrompt,
+        input: data.input,
+        expectedOutput: data.expectedOutput,
+        constraints: data.constraints,
+        promptParts: data.promptParts,
+      });
+      if (max < 0) {
+        setAttemptsRemaining(-1);
+      } else {
+        setAttemptsRemaining(Math.max(0, max - used));
+      }
+    });
   }, []);
 
   const refreshRound = useCallback(
@@ -244,6 +269,16 @@ export default function GameUI() {
     },
     [applyRoundPayload]
   );
+
+  const syncRoundFromServer = useEffectEvent(() => {
+    const sid = sessionRef.current;
+    if (!sid || document.hidden) return;
+    void refreshRound(sid);
+  });
+
+  const tickCountdown = useEffectEvent(() => {
+    setTimeLeftSec((s) => Math.max(0, s - 1));
+  });
 
   // ── localStorage: restore state on mount ──
   useEffect(() => {
@@ -370,22 +405,19 @@ export default function GameUI() {
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") return;
     const id = window.setInterval(() => {
-      setTimeLeftSec((s) => Math.max(0, s - 1));
+      tickCountdown();
     }, 1000);
     return () => window.clearInterval(id);
   }, [phase]);
 
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") return;
-    const sid = sessionRef.current;
-    if (!sid) return;
-
     const id = window.setInterval(() => {
-      void refreshRound(sid);
-    }, 5000);
+      syncRoundFromServer();
+    }, SESSION_POLL_INTERVAL_MS);
 
     return () => window.clearInterval(id);
-  }, [phase, refreshRound]);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") {
@@ -410,6 +442,11 @@ export default function GameUI() {
         sessionRef.current
       ) {
         void reportViolation("TAB_SWITCH");
+        return;
+      }
+
+      if (!document.hidden && (phase === "playing" || phase === "bonus")) {
+        syncRoundFromServer();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -451,11 +488,65 @@ export default function GameUI() {
         return;
       }
 
-      setAdminPlayers((data.players ?? []) as AdminPlayer[]);
+      startTransition(() => {
+        setAdminPlayers((data.players ?? []) as AdminPlayer[]);
+      });
     } catch {
       setError("Network error loading players.");
     }
   };
+
+  useEffect(() => {
+    if (
+      phase !== "admin-view" ||
+      adminTab !== "preview" ||
+      !currentAdminToken
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/get-round", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentAdminToken}`,
+          },
+          body: JSON.stringify({ roundNumber: adminRoundNumber }),
+        });
+
+        const data = (await res.json()) as RoundPayload;
+        if (!res.ok || data.error) {
+          throw new Error(data.error ?? `Failed to load round (${res.status})`);
+        }
+
+        if (!cancelled) {
+          startTransition(() => {
+            setAdminPreviewRound({
+              type: data.roundType,
+              instruction: data.instruction,
+              originalPrompt: data.originalPrompt,
+              input: data.input,
+              expectedOutput: data.expectedOutput,
+              constraints: data.constraints,
+              promptParts: data.promptParts,
+            });
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load round preview.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminRoundNumber, adminTab, currentAdminToken, phase]);
 
   const startGame = async () => {
     if (!player.name.trim() || !player.email.trim()) {
@@ -765,9 +856,7 @@ export default function GameUI() {
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>
       <div className="fixed inset-0 z-50 pointer-events-none scanline-overlay opacity-10 mix-blend-overlay"></div>
 
-      {/* ========================================================================= */}
-      {/* ADMIN DASHBOARD VIEW */}
-      {/* ========================================================================= */}
+      {/* ADMIN DASHBOARD VIEW */}      
       {phase === "admin-view" && (
         <div className="w-full max-w-7xl terminal-panel p-6 md:p-8 rounded-xl relative">
           <div className="screen-glare absolute inset-0 rounded-xl" />
@@ -785,7 +874,7 @@ export default function GameUI() {
                 {adminTab === "leaderboard" && (
                   <button onClick={() => currentAdminToken && void loadAdminPlayers(currentAdminToken)} className="text-sm bg-cyan-900 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 px-4 py-2 rounded uppercase font-bold tracking-wider">Sync Data</button>
                 )}
-                <button onClick={() => { setCurrentAdminToken(null); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
+                <button onClick={() => { setCurrentAdminToken(null); setAdminPreviewRound(null); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
               </div>
             </div>
 
@@ -794,18 +883,18 @@ export default function GameUI() {
             {/* --- ADMIN TAB 1: ROUND PREVIEW --- */}
             {adminTab === "preview" && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4 bg-black/40 p-4 rounded border border-cyan-900/30">
+              <div className="flex items-center gap-4 bg-black/40 p-4 rounded border border-cyan-900/30">
                   <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm">Select Sector:</label>
                   <select value={adminRoundNumber} onChange={(e) => setAdminRoundNumber(Number(e.target.value))} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
-                    {roundsTemplate.map((_, idx) => (
+                    {Array.from({ length: TOTAL_ROUNDS }, (_, idx) => (
                       <option key={idx + 1} value={idx + 1}>DOOR {idx + 1}</option>
                     ))}
                   </select>
                   <span className="text-cyan-800 text-sm ml-auto font-mono hidden sm:block">{"// VIEW_MODE: OVERRIDE //"}</span>
                 </div>
 
-                {roundsTemplate[adminRoundNumber - 1] && (() => {
-                  const previewRound = roundsTemplate[adminRoundNumber - 1];
+                {adminPreviewRound && (() => {
+                  const previewRound = adminPreviewRound;
                   return (
                     <div className="border border-slate-700/50 rounded-xl p-6 bg-black/50 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] relative mt-2">
                       <div className="flex justify-between items-end mb-4 border-b border-slate-800 pb-4 gap-4">
@@ -1000,16 +1089,18 @@ export default function GameUI() {
       )}
 
 
-      {/* ========================================================================= */}
       {/* STEP 0: SPLASH SCREEN (INITIAL LOAD) */}
-      {/* ========================================================================= */}
       {phase === "splash" && (
         <div className="w-full flex flex-col items-center justify-center text-center animate-in fade-in duration-1000 z-10">
           <div className="relative mb-8">
             <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full pointer-events-none"></div>
-            <img
+            <Image
               src="/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg"
               alt="Escape Room"
+              width={1200}
+              height={800}
+              priority
+              sizes="(max-width: 768px) 100vw, 42rem"
               className="relative w-full max-w-md md:max-w-lg mx-auto rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800 object-cover"
             />
           </div>
@@ -1028,9 +1119,7 @@ export default function GameUI() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* STEP 1: LANDING PAGE (WELCOME) */}
-      {/* ========================================================================= */}
+      {/* STEP 1: LANDING PAGE (WELCOME) */}      
       {phase === "welcome" && (
         <div className="w-full max-w-3xl terminal-panel p-10 md:p-16 rounded-xl relative text-center">
           <div className="screen-glare absolute inset-0 rounded-xl" />
@@ -1092,9 +1181,7 @@ export default function GameUI() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* STEP 2: INSTRUCTIONS PAGE */}
-      {/* ========================================================================= */}
+      {/* STEP 2: INSTRUCTIONS PAGE */}      
       {phase === "instructions" && (
         <div className="w-full max-w-5xl terminal-panel p-8 md:p-12 rounded-xl relative">
           <div className="screen-glare absolute inset-0 rounded-xl" />
@@ -1189,9 +1276,7 @@ export default function GameUI() {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* STEP 3: REGISTRATION VIEW */}
-      {/* ========================================================================= */}
       {phase === "register" && (
         <div className="w-full max-w-md terminal-panel p-8 md:p-10 rounded-xl relative shadow-[0_0_50px_rgba(0,0,0,0.8)]">
           <div className="screen-glare absolute inset-0 rounded-xl" />
@@ -1250,9 +1335,7 @@ export default function GameUI() {
         </div>
       )}
 
-      {/* ========================================================================= */}
       {/* GAMEPLAY VIEW */}
-      {/* ========================================================================= */}
       {(phase === "playing" || phase === "bonus") && currentRoundData && (
         <div className="w-full max-w-7xl terminal-panel p-6 md:p-8 rounded-xl relative shadow-[0_0_50px_rgba(0,0,0,0.9)]">
           <div className="screen-glare absolute inset-0 rounded-xl" />
@@ -1617,42 +1700,6 @@ export default function GameUI() {
           })()}
         </div>
       )}
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        .escape-bg {
-            background-color: #050505;
-            background-image:
-                radial-gradient(circle at 50% 30%, rgba(15, 23, 42, 0.4) 0%, rgba(0, 0, 0, 0.95) 100%);
-        }
-        .grid-overlay {
-            background-size: 40px 40px;
-            background-image: 
-                linear-gradient(to right, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
-            mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
-            -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
-        }
-        .scanline-overlay {
-            background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.25) 51%);
-            background-size: 100% 4px;
-        }
-        .terminal-panel {
-            background: linear-gradient(145deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.95) 100%);
-            backdrop-filter: blur(10px);
-        }
-        .screen-glare {
-            background: linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 20%, transparent 100%);
-            pointer-events: none;
-        }
-        .list-square {
-            list-style-type: square;
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); rounded: 0; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(51,65,85,0.8); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(71,85,105,1); }
-      `}} />
     </div>
   );
 }

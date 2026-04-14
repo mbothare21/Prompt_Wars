@@ -1,5 +1,7 @@
 import { validateAdminCredentials, createAdminToken } from "@/lib/admin";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   let name = "";
   let email = "";

@@ -25,7 +25,8 @@ export const connectDB = async () => {
 
   if (!cached!.promise) {
     cached!.promise = mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 100,
+      // Serverless functions benefit from smaller pools to avoid connection bursts.
+      maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
       socketTimeoutMS: 30000,
