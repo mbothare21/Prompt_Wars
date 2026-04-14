@@ -85,3 +85,5 @@ export type GameSession = {
     output: string;
   }[];
 };
+
+export type StoredGameSession = Omit<GameSession, "rounds">;

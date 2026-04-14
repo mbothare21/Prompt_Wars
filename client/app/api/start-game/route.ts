@@ -3,13 +3,10 @@ import { createSession, getSession } from "@/lib/gameStore";
 import { getRounds } from "@/lib/roundsStore";
 import {
   bindEmailToSessionId,
-  clearEmailSessionBinding,
   getBoundSessionIdForEmail,
 } from "@/lib/redis";
 import { isTimeUp } from "@/lib/time";
 import type { GameSession } from "@/lib/types";
-import { connectDB } from "@server/lib/mongodb";
-import Player from "@server/models/Player";
 
 export const runtime = "nodejs";
 
@@ -60,8 +57,6 @@ export async function POST(req: Request) {
             remainingTime,
           });
         }
-
-        await clearEmailSessionBinding(email);
       }
     } catch (e) {
       console.error("[start-game] Redis resume error:", e);
@@ -106,35 +101,9 @@ export async function POST(req: Request) {
   await createSession(sessionId, session);
 
   if (email) {
-    await Promise.all([
-      bindEmailToSessionId(email, sessionId).catch((e) =>
-        console.error("[start-game] Redis bind error:", e)
-      ),
-      (async () => {
-        try {
-          await connectDB();
-          await Player.updateOne(
-            { email },
-            {
-              $setOnInsert: {
-                name,
-                email,
-                roundsPlayed: 0,
-                timeTaken: 0,
-                avgAccuracy: 0,
-                attemptsTaken: 0,
-                gameStatus: "COMPLETED",
-                rounds: [],
-                createdAt: new Date(),
-              },
-            },
-            { upsert: true }
-          );
-        } catch (e) {
-          console.error("[start-game] MongoDB error:", e);
-        }
-      })(),
-    ]);
+    await bindEmailToSessionId(email, sessionId).catch((e) =>
+      console.error("[start-game] Redis bind error:", e)
+    );
   }
 
   return Response.json({

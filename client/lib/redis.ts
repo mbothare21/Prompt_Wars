@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import type { GameSession } from "./types";
+import type { StoredGameSession } from "./types";
 
 const url = process.env.REDIS_URL?.trim();
 
@@ -54,11 +54,11 @@ const SESSION_TTL_SEC = 75 * 60; // 75 min — game limit (10 min) + generous bu
 
 export async function getSessionFromRedis(
   id: string
-): Promise<GameSession | null> {
+): Promise<StoredGameSession | null> {
   if (!redis) return null;
   try {
     const raw = await redis.get(sessionKey(id));
-    return raw ? (JSON.parse(raw) as GameSession) : null;
+    return raw ? (JSON.parse(raw) as StoredGameSession) : null;
   } catch {
     return null;
   }
@@ -66,7 +66,7 @@ export async function getSessionFromRedis(
 
 export async function setSessionInRedis(
   id: string,
-  data: GameSession,
+  data: StoredGameSession,
   keepTTL = false
 ): Promise<void> {
   if (!redis) return;
