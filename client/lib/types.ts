@@ -16,6 +16,8 @@ export type Player = {
   totalScore: number;
   averageScore: number;
   completed: boolean;
+  attempts?: number;
+  totalAttempts?: number;
   attemptsPerRound?: Record<number, number>;
   timeLimit?: number;
   gameStatus?: GameStatus;

@@ -1,7 +1,6 @@
 import { getSession, updateSession } from "@/lib/gameStore";
 import { savePlayer } from "@/lib/playerStore";
-import { connectDB } from "@server/lib/mongodb";
-import PlayerModel from "@server/models/Player";
+import { persistTerminalSession } from "@server/lib/playerPersistence";
 
 export const runtime = "nodejs";
 
@@ -26,36 +25,17 @@ export async function POST(req: Request) {
   if (session.violations >= 3) {
     session.status = "DISQUALIFIED";
     session.completed = true;
+    session.player.completed = true;
+    session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "DISQUALIFIED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    if (session.player.email) {
-      const timeTaken = Date.now() - session.startTime;
-      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-      void (async () => {
-        try {
-          await connectDB();
-          await PlayerModel.updateOne(
-            { email: session.player.email },
-            {
-              $set: {
-                roundsPlayed: session.player.roundsPlayed,
-                timeTaken,
-                avgAccuracy: session.player.averageScore,
-                attemptsTaken: totalAttempts,
-                gameStatus: "DISQUALIFIED",
-                completedAt: new Date(),
-              },
-            }
-          );
-        } catch (e) {
-          console.error("[penalty] MongoDB disqualify error:", e);
-        }
-      })();
-    }
+    void persistTerminalSession(session, "DISQUALIFIED").catch((e) =>
+      console.error("[penalty] MongoDB disqualify error:", e)
+    );
 
     return Response.json({
       status: "DISQUALIFIED",

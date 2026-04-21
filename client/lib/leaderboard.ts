@@ -49,6 +49,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
     roundsPlayed: player.roundsPlayed ?? 0,
     totalScore: 0,
     averageScore: player.avgAccuracy ?? 0,
+    attempts: player.attemptsTaken ?? 0,
     completed: true,
     timeLimit: 10 * 60 * 1000,
     gameStatus: player.gameStatus,

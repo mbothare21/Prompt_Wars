@@ -3,9 +3,7 @@ import { ATTEMPT_LIMITS, PASS_THRESHOLDS } from "@/lib/gameConstants";
 import { isTimeUp } from "@/lib/time";
 import { evaluateRound, evaluateMetaBonusRound } from "@/lib/evaluator";
 import { savePlayer } from "@/lib/playerStore";
-import type { GameSession } from "@/lib/types";
-import { connectDB } from "@server/lib/mongodb";
-import PlayerModel from "@server/models/Player";
+import { persistTerminalSession } from "@server/lib/playerPersistence";
 
 export const runtime = "nodejs";
 
@@ -18,30 +16,6 @@ function withTimeout<T>(promise: Promise<T>, ms = 3000): Promise<T> {
       setTimeout(() => reject(new Error("Evaluator timeout")), ms)
     ),
   ]);
-}
-
-function flushToDB(
-  email: string,
-  fields: Record<string, unknown>,
-  pendingRounds: GameSession["pendingRounds"],
-  tag: string
-) {
-  void (async () => {
-    try {
-      await connectDB();
-      await PlayerModel.updateOne(
-        { email },
-        {
-          $set: fields,
-          ...(pendingRounds?.length
-            ? { $push: { rounds: { $each: pendingRounds } } }
-            : {}),
-        }
-      );
-    } catch (e) {
-      console.error(`[evaluate] MongoDB ${tag} error:`, e);
-    }
-  })();
 }
 
 export async function POST(req: Request) {
@@ -69,29 +43,17 @@ export async function POST(req: Request) {
   if (isTimeUp(session)) {
     session.status = "TIME_UP";
     session.completed = true;
+    session.player.completed = true;
+    session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "TIME_OVER";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    if (session.player.email) {
-      const timeTaken = Date.now() - session.startTime;
-      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-      flushToDB(
-        session.player.email,
-        {
-          roundsPlayed: session.player.roundsPlayed,
-          timeTaken,
-          avgAccuracy: session.player.averageScore,
-          attemptsTaken: totalAttempts,
-          gameStatus: "TIME_OVER",
-          completedAt: new Date(),
-        },
-        session.pendingRounds,
-        "time-up"
-      );
-    }
+    void persistTerminalSession(session, "TIME_OVER").catch((e) =>
+      console.error("[evaluate] MongoDB time-up error:", e)
+    );
 
     return Response.json({ status: "GAME_OVER", reason: "TIME_UP" });
   }
@@ -136,29 +98,17 @@ export async function POST(req: Request) {
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {
     session.status = "DISQUALIFIED";
     session.completed = true;
+    session.player.completed = true;
+    session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "FAILED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    if (session.player.email) {
-      const timeTaken = Date.now() - session.startTime;
-      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-      flushToDB(
-        session.player.email,
-        {
-          roundsPlayed: session.player.roundsPlayed,
-          timeTaken,
-          avgAccuracy: session.player.averageScore,
-          attemptsTaken: totalAttempts,
-          gameStatus: "FAILED",
-          completedAt: new Date(),
-        },
-        session.pendingRounds,
-        "attempts-exhausted"
-      );
-    }
+    void persistTerminalSession(session, "FAILED").catch((e) =>
+      console.error("[evaluate] MongoDB attempts-exhausted error:", e)
+    );
 
     return Response.json({
       status: "NO_ATTEMPTS_LEFT",
@@ -232,23 +182,9 @@ export async function POST(req: Request) {
       savePlayer(session.player);
       await updateSession(sessionId, session);
 
-      if (session.player.email) {
-        const timeTaken = Date.now() - session.startTime;
-        const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-        flushToDB(
-          session.player.email,
-          {
-            roundsPlayed: session.player.roundsPlayed,
-            timeTaken,
-            avgAccuracy: session.player.averageScore,
-            attemptsTaken: totalAttempts,
-            gameStatus: completedStatus,
-            completedAt: new Date(),
-          },
-          session.pendingRounds,
-          "completion"
-        );
-      }
+      void persistTerminalSession(session, completedStatus).catch((e) =>
+        console.error("[evaluate] MongoDB completion error:", e)
+      );
 
       return Response.json({
         status: "GAME_COMPLETED",

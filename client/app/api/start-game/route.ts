@@ -7,6 +7,10 @@ import {
 } from "@/lib/redis";
 import { isTimeUp } from "@/lib/time";
 import type { GameSession } from "@/lib/types";
+import {
+  ensurePlayerRecord,
+  findCompletedPlayerByEmail,
+} from "@server/lib/playerPersistence";
 
 export const runtime = "nodejs";
 
@@ -61,6 +65,18 @@ export async function POST(req: Request) {
     } catch (e) {
       console.error("[start-game] Redis resume error:", e);
     }
+
+    try {
+      const alreadyCompleted = await findCompletedPlayerByEmail(email);
+      if (alreadyCompleted) {
+        return Response.json({
+          status: "ALREADY_PLAYED",
+          message: "You have already completed the game.",
+        });
+      }
+    } catch (e) {
+      console.error("[start-game] MongoDB already-played check error:", e);
+    }
   }
 
   const sessionId = uuidv4();
@@ -103,6 +119,9 @@ export async function POST(req: Request) {
   if (email) {
     await bindEmailToSessionId(email, sessionId).catch((e) =>
       console.error("[start-game] Redis bind error:", e)
+    );
+    await ensurePlayerRecord(session).catch((e) =>
+      console.error("[start-game] MongoDB create player error:", e)
     );
   }
 

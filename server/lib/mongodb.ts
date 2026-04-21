@@ -15,16 +15,23 @@ if (!cached) {
   cached = globalWithMongoose.mongoose = { conn: null, promise: null };
 }
 
+function getMongoUri(): string | null {
+  const uri = process.env.MONGO_URI?.trim() || process.env.MONGODB_URI?.trim();
+  return uri && uri.length > 0 ? uri : null;
+}
+
 export const connectDB = async () => {
-  if (!process.env.MONGO_URI) {
-    console.warn("[mongodb] MONGO_URI not set — skipping DB connection");
+  const mongoUri = getMongoUri();
+
+  if (!mongoUri) {
+    console.warn("[mongodb] MONGO_URI/MONGODB_URI not set — skipping DB connection");
     return null;
   }
 
   if (cached!.conn) return cached!.conn;
 
   if (!cached!.promise) {
-    cached!.promise = mongoose.connect(process.env.MONGO_URI, {
+    cached!.promise = mongoose.connect(mongoUri, {
       // Serverless functions benefit from smaller pools to avoid connection bursts.
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,

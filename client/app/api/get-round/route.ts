@@ -4,8 +4,7 @@ import { verifyAdminToken } from "@/lib/admin";
 import { savePlayer } from "@/lib/playerStore";
 import { ATTEMPT_LIMITS } from "@/lib/gameConstants";
 import { getRounds } from "@/lib/roundsStore";
-import { connectDB } from "@server/lib/mongodb";
-import PlayerModel from "@server/models/Player";
+import { persistTerminalSession } from "@server/lib/playerPersistence";
 
 export const runtime = "nodejs";
 
@@ -74,36 +73,17 @@ export async function POST(req: Request) {
   if (isTimeUp(session)) {
     session.status = "TIME_UP";
     session.completed = true;
+    session.player.completed = true;
+    session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
     session.player.gameStatus = "TIME_OVER";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    if (session.player.email) {
-      const timeTaken = Date.now() - session.startTime;
-      const totalAttempts = Object.values(session.attemptsPerRound).reduce((a, b) => a + b, 0);
-      void (async () => {
-        try {
-          await connectDB();
-          await PlayerModel.updateOne(
-            { email: session.player.email },
-            {
-              $set: {
-                roundsPlayed: session.player.roundsPlayed,
-                timeTaken,
-                avgAccuracy: session.player.averageScore,
-                attemptsTaken: totalAttempts,
-                gameStatus: "TIME_OVER",
-                completedAt: new Date(),
-              },
-            }
-          );
-        } catch (e) {
-          console.error("[get-round] MongoDB time-up error:", e);
-        }
-      })();
-    }
+    void persistTerminalSession(session, "TIME_OVER").catch((e) =>
+      console.error("[get-round] MongoDB time-up error:", e)
+    );
 
     return Response.json({
       status: "GAME_OVER",
