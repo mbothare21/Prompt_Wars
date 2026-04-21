@@ -66,6 +66,13 @@ type AdminPlayer = {
   attemptsUsed: number;
   completed: boolean;
   gameStatus?: string;
+  rounds?: {
+    round: number;
+    attempts: number;
+    score: number;
+    prompt: unknown;
+    output: string;
+  }[];
 };
 
 function formatTitle(type: string | undefined): string {

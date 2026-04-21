@@ -15,6 +15,13 @@ type PlayerDoc = {
   gameStatus?: string;
   createdAt?: Date;
   completedAt?: Date;
+  rounds?: {
+    round?: number;
+    attempts?: number;
+    score?: number;
+    prompt?: unknown;
+    output?: string;
+  }[];
 };
 
 export async function GET(req: Request) {
@@ -28,7 +35,7 @@ export async function GET(req: Request) {
   try {
     await connectDB();
     const docs = (await PlayerModel.find({})
-      .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt")
+      .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
       .sort({ roundsPlayed: -1, timeTaken: 1 })
       .lean()) as PlayerDoc[];
 
@@ -43,6 +50,13 @@ export async function GET(req: Request) {
       completed:
         doc.gameStatus === "COMPLETED" || doc.gameStatus === "COMPLETED_WITH_BONUS",
       gameStatus: doc.gameStatus,
+      rounds: (doc.rounds ?? []).map((round) => ({
+        round: round.round ?? 0,
+        attempts: round.attempts ?? 0,
+        score: round.score ?? 0,
+        prompt: round.prompt ?? null,
+        output: round.output ?? "",
+      })),
     }));
 
     return Response.json({ players });
