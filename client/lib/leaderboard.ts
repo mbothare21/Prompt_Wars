@@ -26,17 +26,20 @@ type DbLeaderboardPlayer = {
   avgAccuracy?: number;
   attemptsTaken?: number;
   gameStatus?: Player["gameStatus"];
-  createdAt?: Date;
-  completedAt?: Date;
+  createdAt?: Date | string | number;
+  completedAt?: Date | string | number;
 };
 
+function toTimestamp(value: Date | string | number | undefined) {
+  if (value == null) return undefined;
+  if (value instanceof Date) return value.getTime();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.getTime();
+}
+
 function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
-  const startedAt =
-    player.createdAt instanceof Date ? player.createdAt.getTime() : 0;
-  const completedAt =
-    player.completedAt instanceof Date
-      ? player.completedAt.getTime()
-      : undefined;
+  const startedAt = toTimestamp(player.createdAt) ?? 0;
+  const completedAt = toTimestamp(player.completedAt);
   const playerId =
     typeof player._id === "string"
       ? player._id

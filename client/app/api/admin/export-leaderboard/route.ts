@@ -14,8 +14,8 @@ type PlayerDoc = {
   avgAccuracy?: number;
   attemptsTaken?: number;
   gameStatus?: string;
-  createdAt?: Date;
-  completedAt?: Date;
+  createdAt?: Date | string | number;
+  completedAt?: Date | string | number;
   rounds?: {
     round?: number;
     attempts?: number;
@@ -24,6 +24,13 @@ type PlayerDoc = {
     output?: string;
   }[];
 };
+
+function toIsoString(value: Date | string | number | undefined) {
+  if (value == null) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -51,8 +58,8 @@ export async function GET(req: Request) {
         avgAccuracy: doc.avgAccuracy ?? 0,
         attemptsTaken: doc.attemptsTaken ?? 0,
         gameStatus: doc.gameStatus ?? "IN_PROGRESS",
-        createdAt: doc.createdAt?.toISOString(),
-        completedAt: doc.completedAt?.toISOString(),
+        createdAt: toIsoString(doc.createdAt),
+        completedAt: toIsoString(doc.completedAt),
         rounds: (doc.rounds ?? []).map((round) => ({
           round: round.round ?? 0,
           attempts: round.attempts ?? 0,
