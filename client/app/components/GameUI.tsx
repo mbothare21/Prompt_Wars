@@ -1294,23 +1294,23 @@ export default function GameUI() {
             {/* --- ADMIN TAB 2: LEADERBOARD --- */}
             {adminTab === "leaderboard" && (
               <div className="bg-black/60 p-6 rounded border border-cyan-900/30 shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
-                <h2 className="text-lg font-mono font-bold text-cyan-500 mb-6 uppercase tracking-widest border-b border-cyan-900/50 pb-2">Global Operative Registry</h2>
+                <h2 className="text-lg font-mono font-bold text-cyan-500 mb-6 uppercase tracking-widest border-b border-cyan-900/50 pb-2">Leaderboard</h2>
                 <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                   {sortedAdminPlayers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
                       <span className="text-3xl mb-3 opacity-50">📡</span>
-                      <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No active signals detected.</p>
+                      <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No players yet.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded border border-slate-800">
                       <table className="w-full text-left border-collapse font-mono text-sm">
                         <thead className="bg-slate-900/80 sticky top-0 z-10">
                           <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
-                            <th className="p-4 font-bold">Operative Identity</th>
-                            <th className="p-4 font-bold text-center">Sectors</th>
+                            <th className="p-4 font-bold">Name</th>
+                            <th className="p-4 font-bold text-center">Rooms</th>
                             <th className="p-4 font-bold text-center">Duration</th>
                             <th className="p-4 font-bold text-center">Precision</th>
-                            <th className="p-4 font-bold text-center">Burn Rate</th>
+                            <th className="p-4 font-bold text-center">Total Attempts</th>
                             <th className="p-4 font-bold text-center">Status</th>
                             <th className="p-4 font-bold text-center">Responses</th>
                           </tr>
