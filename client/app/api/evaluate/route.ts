@@ -58,12 +58,11 @@ function derivePlayerMetrics(rounds: PendingRoundRecord[] | undefined) {
 }
 
 export async function POST(req: Request) {
-  const { sessionId, prompt, answers, metaPrompt, finalPrompt } = await req.json() as {
+  const { sessionId, prompt, answers, metaPrompt } = await req.json() as {
     sessionId: string;
     prompt?: string;
     answers?: Record<string, string>;
     metaPrompt?: string;
-    finalPrompt?: string;
   };
 
   const session = await getSession(sessionId);
@@ -97,15 +96,6 @@ export async function POST(req: Request) {
     return Response.json({ status: "GAME_OVER", reason: "TIME_UP" });
   }
 
-  const effectiveLimit = session.timeLimit - (session.penaltyTimeSec ?? 0) * 1000;
-  const timeLeft = effectiveLimit - (Date.now() - session.startTime);
-
-  if (session.currentRound > 5 && timeLeft > 0 && !session.bonusUnlocked) {
-    session.bonusUnlocked = true;
-    await updateSession(sessionId, session);
-    return Response.json({ status: "BONUS_AVAILABLE", remainingTime: timeLeft });
-  }
-
   const roundNum = session.currentRound;
   const round = session.rounds[roundNum - 1];
   const totalRounds = session.rounds.length;
@@ -115,8 +105,11 @@ export async function POST(req: Request) {
       return Response.json({ error: "Invalid answers" });
     }
   } else if (round.type === "BONUS") {
-    if (!metaPrompt || !finalPrompt) {
-      return Response.json({ status: "INVALID_SUBMISSION", message: "Both inputs are required" });
+    if (!metaPrompt) {
+      return Response.json({
+        status: "INVALID_SUBMISSION",
+        message: "A meta-prompt is required",
+      });
     }
     if (session.bonusAttempted) {
       return Response.json({ error: "Already attempted" });
@@ -160,9 +153,7 @@ export async function POST(req: Request) {
       ? await withTimeout(
           evaluateMetaBonusRound({
             metaPrompt: metaPrompt ?? "",
-            finalPrompt: finalPrompt ?? "",
             basePrompt: round.input ?? "",
-            targetOutput: round.targetOutput ?? round.expectedOutput ?? "",
           })
         )
       : await withTimeout(
@@ -212,7 +203,11 @@ export async function POST(req: Request) {
       prompt: round.type === "CLASSIFY"
         ? answers
         : round.type === "BONUS"
-          ? { metaPrompt, finalPrompt }
+          ? {
+              metaPrompt,
+              compiledPrompt:
+                "compiledPrompt" in result ? result.compiledPrompt : undefined,
+            }
           : prompt,
       output: ("output" in result ? result.output : undefined)
         ?? ("finalOutput" in result ? result.finalOutput : undefined)
@@ -229,6 +224,9 @@ export async function POST(req: Request) {
 
   if (finalScore >= passThreshold) {
     session.currentRound++;
+    if (session.currentRound > 5) {
+      session.bonusUnlocked = true;
+    }
 
     if (session.currentRound > totalRounds) {
       session.completed = true;
@@ -264,6 +262,34 @@ export async function POST(req: Request) {
       status: "ROUND_PASSED",
       nextRound: session.currentRound,
       attemptsThisRound: session.attemptsPerRound[roundNum],
+      ...result,
+      finalScore,
+      progress,
+    });
+  }
+
+  if (
+    Number.isFinite(maxAttempts) &&
+    (session.attemptsPerRound[roundNum] ?? 0) >= maxAttempts
+  ) {
+    session.status = "FAILED";
+    session.completed = true;
+    session.player.completed = true;
+    session.player.completedAt = Date.now();
+    session.player.attemptsPerRound = { ...session.attemptsPerRound };
+    session.player.timeLimit = session.timeLimit;
+    session.player.gameStatus = "FAILED";
+    savePlayer(session.player);
+    await updateSession(sessionId, session);
+
+    void persistTerminalSession(session, "FAILED").catch((e) =>
+      console.error("[evaluate] MongoDB final-attempt failure error:", e)
+    );
+
+    return Response.json({
+      status: "NO_ATTEMPTS_LEFT",
+      round: roundNum,
+      attempts: session.attemptsPerRound[roundNum],
       ...result,
       finalScore,
       progress,

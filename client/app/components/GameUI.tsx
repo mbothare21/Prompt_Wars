@@ -173,11 +173,9 @@ export default function GameUI() {
 
   const [promptInput, setPromptInput] = useState("");
   const [metaPromptInput, setMetaPromptInput] = useState("");
-  const [finalPromptInput, setFinalPromptInput] = useState("");
   const [violations, setViolations] = useState(0);
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [dropdownSelections, setDropdownSelections] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -676,33 +674,49 @@ export default function GameUI() {
     }
   };
 
-  // MOCK LOGIC FOR META PROMPTING HARNESS (client-side simulation)
-  const handleGenerateMetaPrompt = () => {
-    if (!metaPromptInput.trim()) return;
-    setIsGeneratingMeta(true);
+  const handleMetaPromptChange = (value: string) => {
+    setMetaPromptInput(value);
     setGeneratedPrompt(null);
-
-    setTimeout(() => {
-      setGeneratedPrompt(
-        `Act as an expert data extraction AI.\n\n` +
-        `Your task is to parse the provided unstructured text and output STRICTLY valid JSON representing the company hierarchy and financials.\n\n` +
-        `CRITICAL CONSTRAINTS:\n` +
-        `- Do not wrap the JSON output in markdown blocks.\n` +
-        `- The root JSON object must contain exactly three keys: "organization" (string), "financials" (object), and "key_personnel" (array of objects).\n` +
-        `- Extract "q3_revenue" as a pure integer and "growth_yoy" including the % sign.\n` +
-        `- Extract exact title and full name for each executive.\n\n` +
-        `Ensure 100% adherence to this schema.`
-      );
-      setIsGeneratingMeta(false);
-      setCopied(false);
-    }, 1400);
   };
 
-  const handleCopyPrompt = () => {
-    if (!generatedPrompt) return;
-    void navigator.clipboard.writeText(generatedPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleGenerateMetaPrompt = async () => {
+    const sid = sessionRef.current;
+    if (!sid || !metaPromptInput.trim()) return;
+
+    setIsGeneratingMeta(true);
+    setGeneratedPrompt(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/compile-meta-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sid,
+          metaPrompt: metaPromptInput.trim(),
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        compiledPrompt?: string;
+        remainingTime?: number;
+      };
+
+      if (!res.ok || typeof data.compiledPrompt !== "string") {
+        setError(data.error ?? "Prompt compiler unavailable.");
+        return;
+      }
+
+      if (typeof data.remainingTime === "number") {
+        setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
+      }
+
+      setGeneratedPrompt(data.compiledPrompt);
+    } catch {
+      setError("Prompt compiler unavailable.");
+    } finally {
+      setIsGeneratingMeta(false);
+    }
   };
 
   const buildLastResult = (finalScore: number, passed: boolean): LastResult => ({
@@ -729,8 +743,12 @@ export default function GameUI() {
         return;
       }
     } else if (isBonus) {
-      if (metaPromptInput.trim().length < 3 || finalPromptInput.trim().length < 3) {
-        setError("Both meta-prompt and final prompt must be at least 3 characters.");
+      if (metaPromptInput.trim().length < 3) {
+        setError("Meta-prompt must be at least 3 characters.");
+        return;
+      }
+      if (!generatedPrompt) {
+        setError("Generate and review the compiled prompt before submitting.");
         return;
       }
     } else {
@@ -757,10 +775,13 @@ export default function GameUI() {
           prompt: isBonus ? undefined : prompt,
           answers,
           metaPrompt: isBonus ? metaPromptInput.trim() : undefined,
-          finalPrompt: isBonus ? finalPromptInput.trim() : undefined,
         }),
       });
       const data = (await res.json()) as Record<string, unknown>;
+
+      if (typeof data.compiledPrompt === "string") {
+        setGeneratedPrompt(data.compiledPrompt);
+      }
 
       if (data.error === "Invalid prompt") {
         setError("Invalid payload detected.");
@@ -773,18 +794,6 @@ export default function GameUI() {
       }
 
       const status = data.status as string | undefined;
-
-      if (status === "BONUS_AVAILABLE") {
-        const rt = data.remainingTime as number | undefined;
-        if (typeof rt === "number") {
-          setTimeLeftSec(Math.max(0, Math.ceil(rt / 1000)));
-        }
-        setPhase("bonus");
-        setLastResult(null);
-        setMessage("WARNING: Hidden sub-level unlocked. Proceed with extreme caution.");
-        setPromptInput("");
-        return;
-      }
 
       if (status === "GAME_OVER" && data.reason === "TIME_UP") {
         finishGame("Life support depleted. Time is up.");
@@ -887,6 +896,8 @@ export default function GameUI() {
   const headerTitle = `DOOR ${roundNumber} OF ${TOTAL_ROUNDS}: ${formatTitle(currentRoundData?.type).toUpperCase()}`;
   const inputLocked = busy || attemptsRemaining === 0 || lastResult?.passed === true;
   const currentAccuracy = lastResult ? Math.min(100, Math.max(0, lastResult.score)) : 0;
+  const bonusPromptReady =
+    currentRoundData?.type !== "BONUS" || Boolean(generatedPrompt);
 
   const ROUND_TYPE_LABELS: Record<number, string> = {
     1: "CLASSIFY (MCQ)",
@@ -1195,16 +1206,21 @@ export default function GameUI() {
                                 <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90 flex flex-col gap-6">
                                   <div className="flex flex-col gap-2">
                                     <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
-                                      <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Inject Architecture
+                                      <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Author Meta-Prompt
                                     </h3>
-                                    <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Input meta-sequence..."></textarea>
-                                    <button disabled className="mt-2 bg-cyan-900/30 border border-cyan-800 text-cyan-600 px-4 py-2 rounded text-xs font-bold w-full uppercase tracking-widest">Compile AI Code</button>
+                                    <textarea className="w-full h-32 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Describe how the AI should infer hidden constraints and build the final prompt..."></textarea>
+                                    <button disabled className="mt-2 bg-cyan-900/30 border border-cyan-800 text-cyan-600 px-4 py-2 rounded text-xs font-bold w-full uppercase tracking-widest">Generate Final Prompt</button>
                                   </div>
-                                  <div className="flex flex-col gap-2 opacity-50">
+                                  <div className="flex flex-col gap-2 opacity-70">
                                     <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest flex items-center gap-2">
-                                      <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded">Phase 2</span> Execute Payload
+                                      <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded">PHASE 2</span> Compiled Prompt Preview
                                     </h3>
-                                    <textarea className="w-full h-24 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Paste compiled code..."></textarea>
+                                    <div className="w-full min-h-[180px] bg-slate-950 border border-slate-700 rounded p-3 text-xs font-mono text-slate-600 shadow-inner flex items-center">
+                                      The exact generated prompt will appear here after compilation.
+                                    </div>
+                                  </div>
+                                  <div className="bg-amber-950/20 border border-amber-900/40 rounded p-3 text-[11px] text-amber-200/60 font-mono leading-relaxed">
+                                    Final scoring uses the compiled prompt generated from the player&apos;s meta-prompt. There is no manual second prompt entry in the live round.
                                   </div>
                                 </div>
                               ) : (
@@ -1684,13 +1700,13 @@ export default function GameUI() {
 
                         <div className="flex flex-col gap-2">
                           <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
-                            <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Inject Architecture
+                            <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Author Meta-Prompt
                           </h3>
                           <textarea
-                            className="w-full h-24 p-3 bg-slate-950 rounded border border-slate-700 text-cyan-100 outline-none focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none shadow-inner disabled:opacity-50"
-                            placeholder="Input meta-sequence instructions..."
+                            className="w-full h-32 p-3 bg-slate-950 rounded border border-slate-700 text-cyan-100 outline-none focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none shadow-inner disabled:opacity-50"
+                            placeholder="Describe how the AI should infer hidden constraints and build the final prompt..."
                             value={metaPromptInput}
-                            onChange={(e) => setMetaPromptInput(e.target.value)}
+                            onChange={(e) => handleMetaPromptChange(e.target.value)}
                             disabled={inputLocked || isGeneratingMeta}
                             onPaste={(e) => { e.preventDefault(); void reportViolation("COPY_PASTE"); }}
                           />
@@ -1699,38 +1715,33 @@ export default function GameUI() {
                             disabled={inputLocked || isGeneratingMeta || !metaPromptInput.trim()}
                             className="self-end bg-cyan-900/50 hover:bg-cyan-800/80 border border-cyan-800 text-cyan-400 disabled:bg-slate-900 disabled:border-slate-800 disabled:text-slate-600 px-4 py-2 rounded font-bold text-xs uppercase tracking-widest transition-all"
                           >
-                            {isGeneratingMeta ? "Compiling..." : "Compile AI Code"}
+                            {isGeneratingMeta ? "Compiling..." : "Generate Final Prompt"}
                           </button>
                         </div>
 
-                        {generatedPrompt && (
-                          <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2">
-                            <div className="flex justify-between items-center">
-                              <h3 className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Compiled Output</h3>
-                              <button onClick={handleCopyPrompt} className="text-[10px] flex items-center gap-1 bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition-colors text-slate-300 font-mono uppercase">
-                                {copied ? <span className="text-green-400">✓ Acquired</span> : <span>📋 Copy</span>}
-                              </button>
-                            </div>
-                            <div className="w-full p-3 bg-cyan-950/20 rounded text-cyan-300 border border-cyan-900/50 font-mono text-xs whitespace-pre-wrap shadow-inner">
-                              {generatedPrompt}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="border-t border-slate-800 my-1"></div>
-
-                        <div className={`flex flex-col gap-2 transition-opacity ${generatedPrompt ? 'opacity-100' : 'opacity-40'}`}>
+                        <div className={`flex flex-col gap-2 transition-opacity ${generatedPrompt ? "opacity-100" : "opacity-70"}`}>
                           <h3 className="text-xs font-bold text-green-500 uppercase tracking-widest flex items-center gap-2">
-                            <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded border border-green-800">PHASE 2</span> Execute Payload
+                            <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded border border-green-800">PHASE 2</span> Compiled Prompt Preview
                           </h3>
-                          <textarea
-                            className="w-full h-32 p-3 bg-slate-950 rounded border border-slate-700 text-green-300 outline-none focus:ring-1 focus:ring-green-500 font-mono text-sm resize-none shadow-inner disabled:opacity-50"
-                            placeholder="Right-click and paste compiled code here..."
-                            value={finalPromptInput}
-                            onChange={(e) => setFinalPromptInput(e.target.value)}
-                            disabled={inputLocked || !generatedPrompt}
-                          // ANTI-CHEAT OVERRIDE: allow paste here
-                          />
+                          <p className="text-[11px] text-slate-500 font-mono">
+                            Review the exact prompt generated from your meta-prompt. This is the prompt the system will execute when you submit.
+                          </p>
+                          {generatedPrompt ? (
+                            <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2">
+                              <h3 className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Compiled Output</h3>
+                              <div className="w-full p-3 bg-cyan-950/20 rounded text-cyan-300 border border-cyan-900/50 font-mono text-xs whitespace-pre-wrap shadow-inner min-h-[180px]">
+                                {generatedPrompt}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full min-h-[180px] p-3 bg-slate-950/60 rounded border border-slate-800 text-slate-600 font-mono text-xs shadow-inner flex items-center">
+                              The exact generated prompt will appear here after you compile the meta-prompt.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-amber-950/20 border border-amber-900/40 rounded p-3 text-[11px] text-amber-200/80 font-mono leading-relaxed">
+                          Only your meta-prompt is submitted. The system will compile and execute the resulting prompt against the scenario in a single scored attempt.
                         </div>
                       </div>
                     ) : (
@@ -1756,12 +1767,18 @@ export default function GameUI() {
                       disabled={
                         inputLocked ||
                         (currentRoundData.type === "BONUS"
-                          ? !metaPromptInput.trim() || !finalPromptInput.trim()
+                          ? !metaPromptInput.trim() || !bonusPromptReady
                           : !promptInput.trim())
                       }
                       className="bg-slate-800 hover:bg-cyan-900/50 border border-slate-700 hover:border-cyan-700 text-slate-400 hover:text-cyan-300 disabled:bg-black/50 disabled:border-slate-800 disabled:text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase transition-all shadow-lg"
                     >
-                      {lastResult?.passed ? "Lock Bypassed..." : busy ? "Transmitting..." : "Initiate Override"}
+                      {lastResult?.passed
+                        ? "Lock Bypassed..."
+                        : busy
+                          ? "Transmitting..."
+                          : currentRoundData.type === "BONUS"
+                            ? "Execute Generated Prompt"
+                            : "Initiate Override"}
                     </button>
                   )}
 

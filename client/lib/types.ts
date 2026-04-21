@@ -46,7 +46,6 @@ export type Round = {
   constraints?: unknown;
   promptParts?: PromptPart[];
   basePrompt?: string;
-  targetOutput?: string;
 };
 
 export type PromptPart = {

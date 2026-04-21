@@ -179,60 +179,9 @@ Rules:
             roundNumber: 6,
             type: "BONUS",
             instruction:
-                "You are given a scenario and a target output. Write a meta-prompt: a prompt that, when given to an AI along with the scenario, will generate a much more detailed and constraint-aware prompt. Then, write the final improved prompt yourself. Your final prompt's output will be evaluated against the ideal target. The constraints are NOT listed — you must infer what makes a strong output through meta-prompting.",
-            input: `A software team is 2 weeks behind schedule on a critical feature (Project Phoenix — internal billing system migration) due to unexpected breaking changes in a third-party payment API (Stripe v2 → v3). The team has identified a workaround using an adapter pattern but it requires 3 additional sprint cycles (6 weeks). The original deadline was end of Q2 (June 30). Key stakeholders include the VP of Engineering, Finance Director, and the CTO. The billing system processes $4.2M in monthly transactions. Two junior developers were recently onboarded to help. Integration tests are currently at 62% coverage (target: 90%). The team is also managing tech debt from the legacy system that causes ~3 incidents/week.`,
-            targetOutput: `Subject: Project Phoenix — Status Update & Revised Timeline
-
-Dear Stakeholders,
-
-Executive Summary:
-Project Phoenix (billing system migration) is currently 2 weeks behind the original Q2 deadline due to breaking changes in Stripe's API (v2 → v3). We have identified a viable path forward using an adapter pattern, with a revised delivery date of August 11.
-
-Current Status:
-- Migration progress: Core modules complete; payment integration blocked by API changes
-- Test coverage: 62% (target: 90%) — dedicated sprint planned to close gap
-- Team: 2 junior developers onboarded; ramping on codebase and adapter pattern
-- Legacy incidents: ~3/week — temporary monitoring escalation in place
-
-Root Cause Analysis:
-Stripe's v2 → v3 migration introduced undocumented breaking changes in webhook signatures and idempotency handling. Our existing integration assumed backward compatibility, which was not maintained. Discovery occurred during integration testing phase.
-
-Impact Assessment:
-- Timeline: +6 weeks (3 sprint cycles) from original June 30 deadline
-- Financial risk: $4.2M/month in transactions processed through billing system
-- Operational: Legacy system incidents may increase without mitigation
-- Resource: Junior developer ramp-up adds short-term velocity cost
-
-Proposed Path Forward:
-1. Sprint 7-8: Implement adapter pattern for Stripe v3 compatibility
-2. Sprint 9: Integration testing push to reach 90% coverage target
-3. Parallel track: Legacy incident reduction through targeted hotfixes
-4. Weekly stakeholder syncs every Tuesday at 2 PM
-
-Revised Timeline:
-| Milestone | Original Date | Revised Date |
-|-----------|--------------|--------------|
-| API adapter complete | N/A | July 14 |
-| Test coverage ≥ 90% | June 16 | July 28 |
-| Staging deployment | June 23 | August 4 |
-| Production go-live | June 30 | August 11 |
-
-Risk Mitigation:
-- Fallback: Maintain legacy system in parallel until 2 weeks post-migration
-- Monitoring: PagerDuty alerts for transaction anomalies during cutover
-- Rollback plan: Feature flag enables instant revert to legacy billing
-
-Next Steps:
-- [ ] Finalize adapter pattern design review (by Friday)
-- [ ] Schedule load testing for revised architecture
-- [ ] Establish weekly metrics dashboard for stakeholder visibility
-- [ ] Junior developer pair programming schedule with senior engineers
-
-Please let me know if you'd like to discuss any of these points in detail. I recommend we schedule a 30-minute review this Thursday to align on the revised timeline.
-
-Best regards,
-Engineering Lead — Project Phoenix`,
-            expectedOutput: "A well-structured project status email with clear sections, professional tone, specific details, and actionable next steps.",
+                "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a far more detailed, constraint-aware final prompt. The hidden constraints are NOT listed — your job is to think of as many of them as possible so the compiled prompt produces the strongest output.",
+            input: `The Aurora identity-platform migration is 3 weeks behind schedule after an external vendor schema change broke Okta SCIM provisioning. The fallback batch-sync job is now duplicating accounts in 4 of 12 regions. The original enterprise cutover date was May 15, and the revised target is June 9 if the team approves a phased rollout and a weekend production freeze. The platform serves 38,000 employee accounts and 6,200 contractor accounts across the US, EU, and APAC. The SSO uptime SLO is 99.95%, and there have been 9 Sev-2 authentication incidents in the last 30 days. Legal has raised GDPR concerns around EU log retention, and Security requires MFA enforcement before go-live. Customer Success needs a communication plan for 47 strategic accounts. Finance has capped additional spend at $180k, while an external identity consultant would cost $95k. The team currently has 3 senior IAM engineers, 2 newly onboarded contractors, and 1 QA lead. Automated regression coverage is 71% with a target of 92%. Key stakeholders are the CIO, CISO, VP Customer Success, Director of Compliance, and CFO. A go/no-go decision is needed by Wednesday at 4 PM, and any production cutover must happen during the Saturday 10 PM-2 AM maintenance window.`,
+            expectedOutput: "An executive stakeholder update with quantified risks, explicit decisions, a revised timeline, and actionable next steps.",
             constraints: {},
         }
     ];

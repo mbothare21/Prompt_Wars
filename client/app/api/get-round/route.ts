@@ -36,7 +36,7 @@ export async function POST(req: Request) {
         challenge: round.input ?? null,
         expectedOutput: round.expectedOutput ?? null,
         roundType: round.type,
-        constraints: round.constraints,
+        constraints: round.type === "BONUS" ? null : round.constraints,
         attemptsThisRound: 0,
         maxAttemptsPerRound: 3,
         maxAttemptsThisRound,
@@ -111,6 +111,11 @@ export async function POST(req: Request) {
   const roundNum = session.currentRound;
   const maxAttemptsThisRound = ATTEMPT_LIMITS[roundNum] ?? -1;
 
+  if (round.type === "BONUS" && !session.bonusUnlocked) {
+    session.bonusUnlocked = true;
+    await updateSession(sessionId, session);
+  }
+
   return Response.json({
     status: "ACTIVE",
     roundNumber: session.currentRound,
@@ -120,7 +125,7 @@ export async function POST(req: Request) {
     challenge: round.input ?? null,
     expectedOutput: round.expectedOutput ?? null,
     roundType: round.type,
-    constraints: round.constraints,
+    constraints: round.type === "BONUS" ? null : round.constraints,
     attemptsThisRound: session.attemptsPerRound[roundNum] ?? 0,
     maxAttemptsPerRound: session.maxAttemptsPerRound,
     maxAttemptsThisRound,
