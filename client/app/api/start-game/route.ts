@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if (email) {
+  if (email && !identityCheck.isAttemptGameBypass) {
     try {
       const existingSessionId = await getBoundSessionIdForEmail(email);
       if (existingSessionId) {

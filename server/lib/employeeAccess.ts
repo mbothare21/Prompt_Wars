@@ -9,6 +9,7 @@ type EmployeeDirectoryRecord = {
 const DEFAULT_COMPANY_EMAIL_DOMAIN = "calfus.com";
 const DEFAULT_EMPLOYEE_DB_NAME = "promptwars";
 const DEFAULT_EMPLOYEE_COLLECTION_NAME = "employeeDetails";
+const DEFAULT_ATTEMPT_GAME_BYPASS_LOCAL_PART = "attempt-game";
 
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -35,6 +36,18 @@ function getEmployeeCollectionName() {
     process.env.EMPLOYEE_COLLECTION_NAME?.trim() ||
     DEFAULT_EMPLOYEE_COLLECTION_NAME
   );
+}
+
+function getAttemptGameBypassEmail() {
+  return (
+    process.env.ATTEMPT_GAME_BYPASS_EMAIL?.trim() ||
+    `${DEFAULT_ATTEMPT_GAME_BYPASS_LOCAL_PART}@${getCompanyEmailDomain()}`
+  );
+}
+
+export function isAttemptGameBypassEmail(email?: string) {
+  if (!email) return false;
+  return normalizeEmail(email) === normalizeEmail(getAttemptGameBypassEmail());
 }
 
 function escapeRegex(value: string) {
@@ -80,6 +93,10 @@ export async function validateEmployeeIdentity(name: string, email?: string) {
 
   if (validateAdminCredentials(trimmedName, trimmedEmail)) {
     return { ok: true, isAdmin: true };
+  }
+
+  if (isAttemptGameBypassEmail(trimmedEmail)) {
+    return { ok: true, isAdmin: false, isAttemptGameBypass: true };
   }
 
   const companyDomain = getCompanyEmailDomain();
