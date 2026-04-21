@@ -8,7 +8,8 @@
     "start": "next start client",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "attempt-game": "node scripts/attempt-game.mjs"
   },
   "dependencies": {
     "ioredis": "^5.10.1",
