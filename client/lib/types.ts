@@ -67,7 +67,7 @@ export type GameSession = {
   timeLimit: number;
 
   completed: boolean;
-  status: "ACTIVE" | "COMPLETED" | "TIME_UP" | "DISQUALIFIED";
+  status: "ACTIVE" | "COMPLETED" | "FAILED" | "TIME_UP" | "DISQUALIFIED";
 
   attemptsPerRound: Record<number, number>;
   maxAttemptsPerRound: number;

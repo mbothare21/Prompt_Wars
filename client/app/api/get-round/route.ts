@@ -62,6 +62,14 @@ export async function POST(req: Request) {
     });
   }
 
+  if (session.status === "FAILED") {
+    return Response.json({
+      status: "GAME_OVER",
+      sessionStatus: session.status,
+      reason: "ATTEMPTS_EXHAUSTED",
+    });
+  }
+
   if (session.completed && session.status === "COMPLETED") {
     return Response.json({
       status: "GAME_COMPLETED",
@@ -95,6 +103,7 @@ export async function POST(req: Request) {
     return Response.json({
       status: "GAME_OVER",
       sessionStatus: session.status,
+      reason: session.status === "TIME_UP" ? "TIME_UP" : undefined,
     });
   }
 

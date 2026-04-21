@@ -2,6 +2,7 @@ export const MAIN_ROUNDS = 5;
 export const TOTAL_ROUNDS = 6;
 export const PASS_ADVANCE_MS = 2500;
 export const SESSION_POLL_INTERVAL_MS = 15000;
+export const SESSION_TIME_LIMIT_MS = 20 * 60 * 1000;
 
 export const PASS_THRESHOLDS: Record<number, number> = {
   1: 1.0,
@@ -15,6 +16,7 @@ export const PASS_THRESHOLDS: Record<number, number> = {
 export const ATTEMPT_LIMITS: Record<number, number> = {
   4: 3,
   5: 2,
+  6: 1,
 };
 
 export function getTargetScore(round: number): number {

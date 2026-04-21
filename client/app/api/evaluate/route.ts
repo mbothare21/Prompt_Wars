@@ -27,6 +27,36 @@ function isTimeoutError(error: unknown): boolean {
   return /timeout/i.test(message);
 }
 
+type PendingRoundRecord = {
+  round: number;
+  attempts: number;
+  score: number;
+  prompt: unknown;
+  output: string;
+};
+
+function derivePlayerMetrics(rounds: PendingRoundRecord[] | undefined) {
+  const bestScoreByRound = new Map<number, number>();
+
+  for (const round of rounds ?? []) {
+    const currentBest = bestScoreByRound.get(round.round) ?? 0;
+    bestScoreByRound.set(round.round, Math.max(currentBest, round.score));
+  }
+
+  const roundsPlayed = bestScoreByRound.size;
+  const totalScore = Array.from(bestScoreByRound.values()).reduce(
+    (sum, score) => sum + score,
+    0
+  );
+  const averageScore = roundsPlayed > 0 ? totalScore / roundsPlayed : 0;
+
+  return {
+    roundsPlayed,
+    totalScore,
+    averageScore,
+  };
+}
+
 export async function POST(req: Request) {
   const { sessionId, prompt, answers, metaPrompt, finalPrompt } = await req.json() as {
     sessionId: string;
@@ -103,7 +133,7 @@ export async function POST(req: Request) {
   const maxAttempts = ATTEMPT_LIMITS[roundNum] ?? Infinity;
 
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {
-    session.status = "DISQUALIFIED";
+    session.status = "FAILED";
     session.completed = true;
     session.player.completed = true;
     session.player.completedAt = Date.now();
@@ -168,14 +198,9 @@ export async function POST(req: Request) {
   let finalScore = result.finalScore;
   let progress = result.progress;
   if (round.type === "BONUS") {
-    finalScore *= 1.5;
+    finalScore = Math.min(1, finalScore * 1.5);
     progress = Math.round(finalScore * 100);
   }
-
-  session.player.roundsPlayed += 1;
-  session.player.totalScore += finalScore;
-  session.scores.push(finalScore);
-  session.player.averageScore = session.player.totalScore / session.scores.length;
 
   // Accumulate round data in session — flushed to DB at terminal states
   session.pendingRounds = [
@@ -194,6 +219,11 @@ export async function POST(req: Request) {
         ?? "",
     },
   ];
+
+  const metrics = derivePlayerMetrics(session.pendingRounds);
+  session.player.roundsPlayed = metrics.roundsPlayed;
+  session.player.totalScore = metrics.totalScore;
+  session.player.averageScore = metrics.averageScore;
 
   const passThreshold = PASS_THRESHOLDS[roundNum] ?? 0.60;
 

@@ -11,13 +11,16 @@ import {
   useState,
 } from "react";
 import {
+  ATTEMPT_LIMITS,
   MAIN_ROUNDS,
   PASS_ADVANCE_MS,
+  SESSION_TIME_LIMIT_MS,
   SESSION_POLL_INTERVAL_MS,
   TOTAL_ROUNDS,
   getTargetScore,
 } from "@/lib/gameConstants";
-import type { PromptPart } from "@/lib/types";
+import { compareCompetitiveStanding } from "@/lib/ranking";
+import type { PromptPart, Round } from "@/lib/types";
 
 type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "playing" | "bonus" | "finished";
 
@@ -85,6 +88,7 @@ function formatTitle(type: string | undefined): string {
 
 const GAME_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   COMPLETED: { label: "Completed", color: "text-green-400" },
+  COMPLETED_WITH_BONUS: { label: "Completed + Bonus", color: "text-emerald-300" },
   COMPLETED_BONUS: { label: "Completed + Bonus", color: "text-emerald-300" },
   FAILED: { label: "Failed (Attempts)", color: "text-red-400" },
   TIME_OVER: { label: "Time Out", color: "text-amber-400" },
@@ -117,7 +121,13 @@ function formatConstraints(constraints: unknown): string[] {
   if (Array.isArray(c.mustExclude)) {
     parts.push(`Must Exclude: ${c.mustExclude.join(", ")}`);
   }
-  if (typeof c.requiredAccuracy === "number") parts.push(`Required Accuracy: ${c.requiredAccuracy}`);
+  if (typeof c.requiredAccuracy === "number") {
+    const formattedAccuracy =
+      c.requiredAccuracy <= 1
+        ? `${Math.round(c.requiredAccuracy * 100)}%`
+        : `${c.requiredAccuracy}`;
+    parts.push(`Required Accuracy: ${formattedAccuracy}`);
+  }
 
   if (parts.length === 0) return ["No specific constraints."];
   return parts;
@@ -137,12 +147,22 @@ export default function GameUI() {
   // Auto-sort Leaderboard Data based on strict criteria
   const sortedAdminPlayers = useMemo(() => {
     return [...adminPlayers].sort((a, b) => {
-      // 1. Sort by Rounds Played (Descending)
-      if (b.roundsPlayed !== a.roundsPlayed) return b.roundsPlayed - a.roundsPlayed;
-      // 2. Sort by Time Taken (Ascending - Lower is better)
-      if (a.timeTakenSec !== b.timeTakenSec) return a.timeTakenSec - b.timeTakenSec;
-      // 3. Sort by Average Score / Accuracy (Descending)
-      return b.averageScore - a.averageScore;
+      return compareCompetitiveStanding(
+        {
+          roundsPlayed: a.roundsPlayed,
+          averageScore: a.averageScore,
+          timeTakenMs: a.timeTakenSec * 1000,
+          attempts: a.attemptsUsed,
+          name: a.name,
+        },
+        {
+          roundsPlayed: b.roundsPlayed,
+          averageScore: b.averageScore,
+          timeTakenMs: b.timeTakenSec * 1000,
+          attempts: b.attemptsUsed,
+          name: b.name,
+        }
+      );
     });
   }, [adminPlayers]);
 
@@ -187,7 +207,7 @@ export default function GameUI() {
   };
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [currentRoundData, setCurrentRoundData] = useState<RoundViewData | null>(null);
-  const [adminPreviewRound, setAdminPreviewRound] = useState<RoundViewData | null>(null);
+  const [adminPreviewRounds, setAdminPreviewRounds] = useState<Round[] | null>(null);
 
   const sessionRef = useRef<string | null>(null);
   sessionRef.current = sessionId;
@@ -245,7 +265,13 @@ export default function GameUI() {
       }
 
       if (data.status === "GAME_OVER") {
-        setMessage(data.reason === "TIME_UP" ? "Time is up." : "Game over.");
+        setMessage(
+          data.reason === "TIME_UP"
+            ? "Time is up."
+            : data.reason === "ATTEMPTS_EXHAUSTED"
+              ? "No attempts remaining."
+              : "Game over."
+        );
         setPhase("finished");
         return;
       }
@@ -477,12 +503,12 @@ export default function GameUI() {
 
   const loadAdminPlayers = async (token: string) => {
     try {
-      const res = await fetch("/api/admin/leaderboard", {
+      const res = await fetch("/api/admin/export-leaderboard", {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      let data: { players?: unknown[] };
+      let data: { players?: Record<string, unknown>[] };
       try {
         data = (await res.json()) as typeof data;
       } catch {
@@ -495,8 +521,25 @@ export default function GameUI() {
         return;
       }
 
+      const mapped = (data.players ?? []).map((p, i) => ({
+        playerId: (p._id as string) ?? String(i),
+        name: (p.name as string) ?? "Unknown",
+        email: p.email as string | undefined,
+        roundsPlayed: (p.roundsPlayed as number) ?? 0,
+        timeTakenSec: Math.round(
+          ((p.timeTaken as number) ?? 0) > 10000
+            ? ((p.timeTaken as number) ?? 0) / 1000
+            : ((p.timeTaken as number) ?? 0)
+        ),
+        averageScore: (p.avgAccuracy as number) ?? 0,
+        attemptsUsed: (p.attemptsTaken as number) ?? 0,
+        completed:
+          p.gameStatus === "COMPLETED" || p.gameStatus === "COMPLETED_WITH_BONUS",
+        gameStatus: p.gameStatus as string | undefined,
+      }));
+
       startTransition(() => {
-        setAdminPlayers((data.players ?? []) as AdminPlayer[]);
+        setAdminPlayers(mapped);
       });
     } catch {
       setError("Network error loading players.");
@@ -504,56 +547,16 @@ export default function GameUI() {
   };
 
   useEffect(() => {
-    if (
-      phase !== "admin-view" ||
-      adminTab !== "preview" ||
-      !currentAdminToken
-    ) {
-      return;
-    }
+    if (phase !== "admin-view" || adminPreviewRounds) return;
 
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const res = await fetch("/api/get-round", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${currentAdminToken}`,
-          },
-          body: JSON.stringify({ roundNumber: adminRoundNumber }),
-        });
-
-        const data = (await res.json()) as RoundPayload;
-        if (!res.ok || data.error) {
-          throw new Error(data.error ?? `Failed to load round (${res.status})`);
-        }
-
-        if (!cancelled) {
-          startTransition(() => {
-            setAdminPreviewRound({
-              type: data.roundType,
-              instruction: data.instruction,
-              originalPrompt: data.originalPrompt,
-              input: data.input,
-              expectedOutput: data.expectedOutput,
-              constraints: data.constraints,
-              promptParts: data.promptParts,
-            });
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setError("Failed to load round preview.");
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [adminRoundNumber, adminTab, currentAdminToken, phase]);
+    void import("@/lib/generateRounds")
+      .then(({ generateRounds }) => {
+        setAdminPreviewRounds(generateRounds());
+      })
+      .catch(() => {
+        setError("Failed to load admin preview.");
+      });
+  }, [adminPreviewRounds, phase]);
 
   const startGame = async () => {
     if (!player.name.trim() || !player.email.trim()) {
@@ -566,26 +569,39 @@ export default function GameUI() {
     setBusy(true);
     allowTimeUpRef.current = false;
 
-    // --- ADMIN LOGIN ---
-    try {
-      const adminRes = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: player.name.trim(), email: player.email.trim() }),
-      });
-      if (adminRes.ok) {
-        const adminData = (await adminRes.json()) as { token?: string };
-        if (adminData.token) {
-          setCurrentAdminToken(adminData.token);
-          setPhase("admin-view");
-          setAdminTab("preview");
-          await loadAdminPlayers(adminData.token);
-          setBusy(false);
+    if (
+      player.name.trim().toLowerCase() === "admin" &&
+      player.email.trim().toLowerCase() === "admin@prompt.com"
+    ) {
+      try {
+        const adminRes = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: player.name.trim(), email: player.email.trim() }),
+        });
+
+        if (!adminRes.ok) {
+          setError("Admin terminal access denied.");
           return;
         }
+
+        const adminData = (await adminRes.json()) as { token?: string };
+        if (!adminData.token) {
+          setError("Admin terminal access denied.");
+          return;
+        }
+
+        setCurrentAdminToken(adminData.token);
+        setPhase("admin-view");
+        setAdminTab("preview");
+        void loadAdminPlayers(adminData.token);
+        return;
+      } catch {
+        setError("Admin terminal access denied.");
+        return;
+      } finally {
+        setBusy(false);
       }
-    } catch {
-      // not admin — continue with normal player flow
     }
 
     try {
@@ -619,7 +635,7 @@ export default function GameUI() {
         return;
       }
 
-      const budgetMs = data.timeLimit ?? 10 * 60 * 1000;
+      const budgetMs = data.timeLimit ?? SESSION_TIME_LIMIT_MS;
       const remainingMs = typeof data.remainingTime === "number" ? data.remainingTime : budgetMs;
       const sec = Math.max(1, Math.ceil(remainingMs / 1000));
       initialSessionSecondsRef.current = sec;
@@ -798,11 +814,17 @@ export default function GameUI() {
 
       const finalScore = (data.finalScore as number | undefined) ?? 0;
 
-      setStats((prev) => ({
-        ...prev,
-        accuracies: [...prev.accuracies, finalScore],
-        lastFinalScore: finalScore,
-      }));
+      setStats((prev) => {
+        const nextAccuracies = [...prev.accuracies];
+        const currentBest = nextAccuracies[roundNumber - 1] ?? 0;
+        nextAccuracies[roundNumber - 1] = Math.max(currentBest, finalScore);
+
+        return {
+          ...prev,
+          accuracies: nextAccuracies,
+          lastFinalScore: finalScore,
+        };
+      });
 
       if (status === "ROUND_FAILED") {
         const ar = data.attemptsRemaining as number | undefined;
@@ -866,6 +888,165 @@ export default function GameUI() {
   const inputLocked = busy || attemptsRemaining === 0 || lastResult?.passed === true;
   const currentAccuracy = lastResult ? Math.min(100, Math.max(0, lastResult.score)) : 0;
 
+  const ROUND_TYPE_LABELS: Record<number, string> = {
+    1: "CLASSIFY (MCQ)",
+    2: "IMPROVE",
+    3: "REVERSE",
+    4: "OPTIMIZE",
+    5: "STRUCTURED",
+    6: "BONUS (Meta-Prompting)",
+  };
+
+  type MongoRound = { round: number; attempts: number; score: number; prompt: unknown; output?: string };
+  type MongoPlayer = {
+    name: string;
+    email: string;
+    roundsPlayed: number;
+    timeTaken: number;
+    avgAccuracy: number;
+    attemptsTaken: number;
+    gameStatus: string;
+    rounds: MongoRound[];
+    createdAt?: string;
+    completedAt?: string;
+  };
+
+  const generatePlayerPDF = (p: MongoPlayer) => {
+    const formatPrompt = (prompt: unknown): string => {
+      if (typeof prompt === "string") return prompt;
+      if (prompt && typeof prompt === "object") {
+        return Object.entries(prompt as Record<string, string>)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n");
+      }
+      return "N/A";
+    };
+
+    const timeTakenSec = p.timeTaken > 10000 ? Math.round(p.timeTaken / 1000) : p.timeTaken;
+    const statusLabel = GAME_STATUS_CONFIG[p.gameStatus ?? ""]?.label ?? p.gameStatus ?? "Unknown";
+
+    let roundsHtml = "";
+    const sortedRounds = [...(p.rounds || [])].sort((a, b) => a.round - b.round);
+    for (const r of sortedRounds) {
+      roundsHtml += `
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${r.round}: ${ROUND_TYPE_LABELS[r.round] ?? "Unknown"}</h3>
+            <div style="display:flex;gap:16px;font-size:12px;color:#64748b;">
+              <span>Score: <strong style="color:${r.score >= 0.6 ? "#16a34a" : "#dc2626"}">${(r.score * 100).toFixed(1)}%</strong></span>
+              <span>Attempts: <strong>${r.attempts}</strong></span>
+            </div>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Player Prompt / Response</div>
+            <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(r.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+          </div>
+          ${r.output ? `
+          <div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
+            <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${r.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+          </div>` : ""}
+        </div>`;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${p.name} - Prompt Wars Response Report</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 32px; color: #1e293b; background: #fff; }
+      @media print { body { padding: 16px; } }
+    </style></head><body>
+      <div style="text-align:center;margin-bottom:32px;">
+        <h1 style="color:#0891b2;margin:0 0 4px;font-size:24px;">Prompt Wars - Response Report</h1>
+        <p style="color:#64748b;margin:0;font-size:13px;">Player Submission Details</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;padding:20px;background:#f1f5f9;border-radius:8px;border:1px solid #e2e8f0;">
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Name</span><br/><strong>${p.name}</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Email</span><br/><strong>${p.email}</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Rounds Played</span><br/><strong>${p.roundsPlayed}</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Time Taken</span><br/><strong>${Math.floor(timeTakenSec / 60)}m ${timeTakenSec % 60}s</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Avg Accuracy</span><br/><strong>${(p.avgAccuracy * 100).toFixed(1)}%</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Total Attempts</span><br/><strong>${p.attemptsTaken}</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Status</span><br/><strong>${statusLabel}</strong></div>
+        <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Completed At</span><br/><strong>${p.completedAt ? new Date(p.completedAt).toLocaleString() : "N/A"}</strong></div>
+      </div>
+      <h2 style="color:#0891b2;font-size:16px;margin-bottom:16px;border-bottom:2px solid #e2e8f0;padding-bottom:8px;">Round-by-Round Responses</h2>
+      ${sortedRounds.length > 0 ? roundsHtml : '<p style="color:#94a3b8;text-align:center;padding:24px;">No round data recorded.</p>'}
+      <p style="color:#94a3b8;text-align:center;font-size:11px;margin-top:32px;">Generated on ${new Date().toLocaleString()}</p>
+    </body></html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (win) {
+      win.onload = () => {
+        URL.revokeObjectURL(url);
+      };
+    }
+  };
+
+  const downloadPlayerResponses = async (email: string) => {
+    if (!currentAdminToken) {
+      alert("Admin session expired");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/player-responses?email=${encodeURIComponent(email)}`, {
+        headers: { Authorization: `Bearer ${currentAdminToken}` },
+      });
+      const data = (await res.json()) as { error?: string; player?: MongoPlayer };
+      if (!res.ok || !data.player) {
+        alert(data.error ?? "Failed to fetch player data");
+        return;
+      }
+      generatePlayerPDF(data.player);
+    } catch {
+      alert("Network error fetching player data");
+    }
+  };
+
+  const downloadFullLeaderboard = async () => {
+    if (!currentAdminToken) {
+      alert("Admin session expired");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/export-leaderboard", {
+        headers: { Authorization: `Bearer ${currentAdminToken}` },
+      });
+      const data = (await res.json()) as { error?: string; players?: MongoPlayer[] };
+      if (!res.ok || !data.players) {
+        alert(data.error ?? "Failed to fetch leaderboard");
+        return;
+      }
+
+      let rows = "Rank,Name,Email,Rounds Played,Time Taken (s),Avg Accuracy (%),Total Attempts,Status\n";
+      data.players.forEach((p, idx) => {
+        const timeSec = p.timeTaken > 10000 ? Math.round(p.timeTaken / 1000) : p.timeTaken;
+        const status = GAME_STATUS_CONFIG[p.gameStatus ?? ""]?.label ?? p.gameStatus ?? "";
+        rows += `${idx + 1},"${p.name}","${p.email}",${p.roundsPlayed},${timeSec},${(p.avgAccuracy * 100).toFixed(1)},${p.attemptsTaken},"${status}"\n`;
+
+        for (const r of (p.rounds || []).sort((a, b) => a.round - b.round)) {
+          const promptStr = typeof r.prompt === "string"
+            ? r.prompt.replace(/"/g, '""')
+            : JSON.stringify(r.prompt).replace(/"/g, '""');
+          const outputStr = (r.output ?? "").replace(/"/g, '""');
+          rows += `,,Round ${r.round}: ${ROUND_TYPE_LABELS[r.round] ?? ""},Attempts: ${r.attempts},Score: ${(r.score * 100).toFixed(1)}%,"${promptStr}","${outputStr}"\n`;
+        }
+      });
+
+      const blob = new Blob([rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `prompt-wars-leaderboard-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Network error exporting leaderboard");
+    }
+  };
+
   return (
     <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
 
@@ -889,9 +1070,12 @@ export default function GameUI() {
               </div>
               <div className="flex gap-2">
                 {adminTab === "leaderboard" && (
-                  <button onClick={() => currentAdminToken && void loadAdminPlayers(currentAdminToken)} className="text-sm bg-cyan-900 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 px-4 py-2 rounded uppercase font-bold tracking-wider">Sync Data</button>
+                  <>
+                    <button onClick={() => currentAdminToken && void loadAdminPlayers(currentAdminToken)} className="text-sm bg-cyan-900 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 px-4 py-2 rounded uppercase font-bold tracking-wider">Sync Data</button>
+                    <button onClick={() => void downloadFullLeaderboard()} className="text-sm bg-green-900/60 hover:bg-green-800/80 text-green-200 border border-green-700 px-4 py-2 rounded uppercase font-bold tracking-wider">Export All (CSV)</button>
+                  </>
                 )}
-                <button onClick={() => { setCurrentAdminToken(null); setAdminPreviewRound(null); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
+                <button onClick={() => { setCurrentAdminToken(null); setAdminPreviewRounds(null); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
               </div>
             </div>
 
@@ -910,8 +1094,8 @@ export default function GameUI() {
                   <span className="text-cyan-800 text-sm ml-auto font-mono hidden sm:block">{"// VIEW_MODE: OVERRIDE //"}</span>
                 </div>
 
-                {adminPreviewRound && (() => {
-                  const previewRound = adminPreviewRound;
+                {adminPreviewRounds?.[adminRoundNumber - 1] && (() => {
+                  const previewRound = adminPreviewRounds[adminRoundNumber - 1];
                   return (
                     <div className="border border-slate-700/50 rounded-xl p-6 bg-black/50 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] relative mt-2">
                       <div className="flex justify-between items-end mb-4 border-b border-slate-800 pb-4 gap-4">
@@ -981,8 +1165,12 @@ export default function GameUI() {
                           <div className="flex flex-col gap-4">
                             <div className="flex-grow flex flex-col">
                               <div className="flex justify-between text-xs font-mono text-slate-500 mb-2 px-1 uppercase tracking-wider">
-                                <span>Lock threshold: {getTargetScore(roundNumber)}.00</span>
-                                <span>{adminRoundNumber >= 5 ? "Sec-Attempts: 3" : "Attempts: Unrestricted"}</span>
+                                <span>Lock threshold: {getTargetScore(adminRoundNumber)}.00</span>
+                                <span>
+                                  {ATTEMPT_LIMITS[adminRoundNumber] != null
+                                    ? `Sec-Attempts: ${ATTEMPT_LIMITS[adminRoundNumber]}`
+                                    : "Attempts: Unrestricted"}
+                                </span>
                               </div>
 
                               {previewRound.type === "CLASSIFY" ? (
@@ -1038,8 +1226,8 @@ export default function GameUI() {
 
                         {previewRound.type !== "CLASSIFY" && (
                           <div className="hidden md:flex w-12 bg-black/80 border border-slate-800 rounded flex-col justify-end items-center relative overflow-hidden shrink-0 shadow-[inset_0_0_20px_rgba(0,0,0,1)] py-4 min-h-[280px] opacity-70">
-                            <div className="absolute w-full h-[1px] bg-amber-500/50 z-10" style={{ bottom: `${getTargetScore(roundNumber)}%` }}>
-                              <span className="absolute -top-5 right-1 text-[10px] font-mono text-amber-500">{getTargetScore(roundNumber)}</span>
+                            <div className="absolute w-full h-[1px] bg-amber-500/50 z-10" style={{ bottom: `${getTargetScore(adminRoundNumber)}%` }}>
+                              <span className="absolute -top-5 right-1 text-[10px] font-mono text-amber-500">{getTargetScore(adminRoundNumber)}</span>
                             </div>
                             <div className="absolute bottom-4 text-[10px] uppercase tracking-widest text-slate-700 rotate-180 font-bold font-mono" style={{ writingMode: "vertical-rl" }}>Match %</div>
                           </div>
@@ -1072,6 +1260,7 @@ export default function GameUI() {
                             <th className="p-4 font-bold text-center">Precision</th>
                             <th className="p-4 font-bold text-center">Burn Rate</th>
                             <th className="p-4 font-bold text-center">Status</th>
+                            <th className="p-4 font-bold text-center">Responses</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50 bg-black/40">
@@ -1091,6 +1280,16 @@ export default function GameUI() {
                                 <td className="p-4 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
                                 <td className="p-4 text-slate-500 text-center">{p.attemptsUsed}</td>
                                 <td className={`p-4 font-bold text-center text-xs uppercase tracking-wider ${statusCfg.color}`}>{statusCfg.label}</td>
+                                <td className="p-4 text-center">
+                                  {p.email && (
+                                    <button
+                                      onClick={() => void downloadPlayerResponses(p.email!)}
+                                      className="bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/50 text-cyan-300 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all hover:shadow-[0_0_10px_rgba(34,211,238,0.2)]"
+                                    >
+                                      Download
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                             );
                           })}
@@ -1236,9 +1435,9 @@ export default function GameUI() {
                     🔁 Security Lockouts
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Sectors possess <strong className="text-slate-200">limited query attempts</strong>.</li>
-                    <li>Exhausting attempts triggers permanent lockdown.</li>
-                    <li>Failed sectors <strong className="text-amber-500">cannot be retried</strong>.</li>
+                    <li>Rounds 1-3 have <strong className="text-slate-200">unrestricted attempts</strong> within the master timer.</li>
+                    <li>Round 4 allows <strong className="text-slate-200">3 attempts</strong>, round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
+                    <li>Exhausting the capped rounds ends the run immediately.</li>
                   </ul>
                 </section>
 
@@ -1270,10 +1469,10 @@ export default function GameUI() {
                   🏆 Evaluation Matrix Ranking Order
                 </h2>
                 <div className="flex flex-col md:flex-row gap-3 font-mono text-[10px] text-green-400 uppercase tracking-widest text-center">
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">1. Sectors Cleared</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">2. Bonus Completion</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">3. Speed & Precision</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">4. Minimal Burn Rate</div>
+                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">1. Rounds Reached</div>
+                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">2. Accuracy + Speed Composite</div>
+                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">3. Fewer Attempts / Round</div>
+                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">4. Deterministic Tie-Break</div>
                 </div>
               </section>
 

@@ -41,16 +41,16 @@ export async function GET(req: Request) {
       .lean()) as PlayerDoc[];
 
     const players = docs.map((doc) => ({
-      playerId: doc._id.toString(),
+      _id: doc._id.toString(),
       name: doc.name ?? "Unknown",
       email: doc.email,
       roundsPlayed: doc.roundsPlayed ?? 0,
-      timeTakenSec: Math.round((doc.timeTaken ?? 0) / 1000),
-      averageScore: doc.avgAccuracy ?? 0,
-      attemptsUsed: doc.attemptsTaken ?? 0,
-      completed:
-        doc.gameStatus === "COMPLETED" || doc.gameStatus === "COMPLETED_WITH_BONUS",
-      gameStatus: doc.gameStatus,
+      timeTaken: doc.timeTaken ?? 0,
+      avgAccuracy: doc.avgAccuracy ?? 0,
+      attemptsTaken: doc.attemptsTaken ?? 0,
+      gameStatus: doc.gameStatus ?? "IN_PROGRESS",
+      createdAt: doc.createdAt?.toISOString(),
+      completedAt: doc.completedAt?.toISOString(),
       rounds: (doc.rounds ?? []).map((round) => ({
         round: round.round ?? 0,
         attempts: round.attempts ?? 0,
@@ -64,16 +64,16 @@ export async function GET(req: Request) {
       compareCompetitiveStanding(
         {
           roundsPlayed: a.roundsPlayed,
-          averageScore: a.averageScore,
-          timeTakenMs: a.timeTakenSec * 1000,
-          attempts: a.attemptsUsed,
+          averageScore: a.avgAccuracy,
+          timeTakenMs: a.timeTaken,
+          attempts: a.attemptsTaken,
           name: a.name,
         },
         {
           roundsPlayed: b.roundsPlayed,
-          averageScore: b.averageScore,
-          timeTakenMs: b.timeTakenSec * 1000,
-          attempts: b.attemptsUsed,
+          averageScore: b.avgAccuracy,
+          timeTakenMs: b.timeTaken,
+          attempts: b.attemptsTaken,
           name: b.name,
         }
       )
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
 
     return Response.json({ players });
   } catch (e) {
-    console.error("[admin/leaderboard]", e);
-    return Response.json({ error: "Failed to fetch players" }, { status: 500 });
+    console.error("[admin/export-leaderboard]", e);
+    return Response.json({ error: "Failed to fetch leaderboard" }, { status: 500 });
   }
 }

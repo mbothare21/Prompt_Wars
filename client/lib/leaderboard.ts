@@ -1,3 +1,4 @@
+import { SESSION_TIME_LIMIT_MS } from "./gameConstants";
 import type { Player } from "./types";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
@@ -51,7 +52,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
     averageScore: player.avgAccuracy ?? 0,
     attempts: player.attemptsTaken ?? 0,
     completed: true,
-    timeLimit: 10 * 60 * 1000,
+    timeLimit: SESSION_TIME_LIMIT_MS,
     gameStatus: player.gameStatus,
   };
 }
@@ -72,8 +73,7 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
       createdAt: 1,
       completedAt: 1,
     })
-    .sort({ roundsPlayed: -1, avgAccuracy: -1, completedAt: 1 })
-    .limit(50)
+    .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
     .lean();
 
   const ranked = rankPlayers(

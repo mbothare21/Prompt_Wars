@@ -36,7 +36,7 @@ export function generateRounds(): Round[] {
                 }
             ],
             constraints: {
-                requiredAccuracy: "75% (3 out of 4 correct)"
+                requiredAccuracy: 1
             }
         },
 

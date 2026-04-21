@@ -1,12 +1,16 @@
 import crypto from "crypto";
 
 const ADMIN_NAME = process.env.ADMIN_NAME || "admin";
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@prompt.com";
 const TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || "dev-secret";
 const TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}
+
 export function validateAdminCredentials(name: string, email: string) {
-  return name === ADMIN_NAME && email === ADMIN_EMAIL;
+  return normalize(name) === normalize(ADMIN_NAME) && normalize(email) === normalize(ADMIN_EMAIL);
 }
 
 function base64url(input: string) {

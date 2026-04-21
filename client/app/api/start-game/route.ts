@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { createSession, getSession } from "@/lib/gameStore";
 import { getRounds } from "@/lib/roundsStore";
+import { SESSION_TIME_LIMIT_MS } from "@/lib/gameConstants";
 import {
   bindEmailToSessionId,
   getBoundSessionIdForEmail,
@@ -11,6 +12,7 @@ import {
   ensurePlayerRecord,
   findCompletedPlayerByEmail,
 } from "@server/lib/playerPersistence";
+import { validateEmployeeIdentity } from "@server/lib/employeeAccess";
 
 export const runtime = "nodejs";
 
@@ -28,6 +30,14 @@ export async function POST(req: Request) {
     }
   } catch {
     /* empty or invalid body */
+  }
+
+  const identityCheck = validateEmployeeIdentity(name, email);
+  if (!identityCheck.ok) {
+    return Response.json(
+      { error: identityCheck.error ?? "Identity verification failed." },
+      { status: 403 }
+    );
   }
 
   if (email) {
@@ -99,7 +109,7 @@ export async function POST(req: Request) {
     rounds: getRounds(),
 
     startTime: Date.now(),
-    timeLimit: 10 * 60 * 1000,
+    timeLimit: SESSION_TIME_LIMIT_MS,
 
     completed: false,
     status: "ACTIVE",

@@ -1,6 +1,8 @@
+import { SESSION_TIME_LIMIT_MS } from "./gameConstants";
 import type { Player } from "./types";
 
-const DEFAULT_MAX_TIME = 10 * 60 * 1000;
+const ACCURACY_BASIS_POINTS = 10_000;
+const PERFORMANCE_TIME_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function getTotalAttempts(player: Player | Record<string, unknown>): number {
   if (!player) return 0;
@@ -17,19 +19,81 @@ function getTotalAttempts(player: Player | Record<string, unknown>): number {
   return 0;
 }
 
+function clampUnitInterval(value: number) {
+  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+export function getAccuracyTimeCompositeScore(
+  averageScore: number,
+  timeTakenMs: number
+) {
+  const accuracyUnits = Math.round(
+    clampUnitInterval(averageScore) * ACCURACY_BASIS_POINTS
+  );
+  const safeTime = Math.max(
+    0,
+    Math.min(PERFORMANCE_TIME_WINDOW_MS - 1, Math.round(timeTakenMs))
+  );
+
+  // Accuracy dominates globally; time only differentiates inside the same accuracy bucket.
+  return (
+    accuracyUnits * PERFORMANCE_TIME_WINDOW_MS +
+    (PERFORMANCE_TIME_WINDOW_MS - 1 - safeTime)
+  );
+}
+
+type CompetitiveStandingInput = {
+  roundsPlayed: number;
+  averageScore: number;
+  timeTakenMs: number;
+  attempts: number;
+  name: string;
+};
+
+export function compareCompetitiveStanding(
+  a: CompetitiveStandingInput,
+  b: CompetitiveStandingInput
+) {
+  if (b.roundsPlayed !== a.roundsPlayed) return b.roundsPlayed - a.roundsPlayed;
+
+  const performanceA = getAccuracyTimeCompositeScore(
+    a.averageScore,
+    a.timeTakenMs
+  );
+  const performanceB = getAccuracyTimeCompositeScore(
+    b.averageScore,
+    b.timeTakenMs
+  );
+  if (performanceB !== performanceA) return performanceB - performanceA;
+
+  const avgAttemptsA = a.roundsPlayed > 0 ? a.attempts / a.roundsPlayed : a.attempts;
+  const avgAttemptsB = b.roundsPlayed > 0 ? b.attempts / b.roundsPlayed : b.attempts;
+  if (avgAttemptsA !== avgAttemptsB) return avgAttemptsA - avgAttemptsB;
+
+  if (a.attempts !== b.attempts) return a.attempts - b.attempts;
+
+  return a.name.localeCompare(b.name);
+}
+
 type ProcessedPlayer = Player & {
   _totalAttempts: number;
-  _combinedScore: number;
+  _timeTakenMs: number;
 };
 
 function preprocess(players: Player[]): ProcessedPlayer[] {
   return players.map((p) => {
     const totalAttempts = getTotalAttempts(p);
-    const time = (p.completedAt || 0) - (p.startedAt || 0);
-    const maxTime = ((p as unknown as Record<string, unknown>).timeLimit as number) || DEFAULT_MAX_TIME;
-    const normalizedTime = maxTime > 0 ? time / maxTime : 0;
-    const combinedScore = normalizedTime - (p.averageScore || 0);
-    return { ...p, _totalAttempts: totalAttempts, _combinedScore: combinedScore };
+    const completedAt = p.completedAt ?? 0;
+    const startedAt = p.startedAt ?? 0;
+    const fallbackTime =
+      ((p as unknown as Record<string, unknown>).timeLimit as number) ||
+      SESSION_TIME_LIMIT_MS;
+    const timeTakenMs =
+      completedAt > 0 && startedAt > 0
+        ? Math.max(0, completedAt - startedAt)
+        : fallbackTime;
+
+    return { ...p, _totalAttempts: totalAttempts, _timeTakenMs: timeTakenMs };
   });
 }
 
@@ -37,15 +101,22 @@ export function rankPlayers(players: Player[]): Player[] {
   const processed = preprocess(players.filter((p) => p != null));
 
   processed.sort((a, b) => {
-    if (b.roundsPlayed !== a.roundsPlayed) return b.roundsPlayed - a.roundsPlayed;
-
-    if (a._combinedScore !== b._combinedScore) return a._combinedScore - b._combinedScore;
-
-    const avgA = a.roundsPlayed > 0 ? a._totalAttempts / a.roundsPlayed : 0;
-    const avgB = b.roundsPlayed > 0 ? b._totalAttempts / b.roundsPlayed : 0;
-    if (avgA !== avgB) return avgA - avgB;
-
-    return (b.averageScore || 0) - (a.averageScore || 0);
+    return compareCompetitiveStanding(
+      {
+        roundsPlayed: a.roundsPlayed,
+        averageScore: a.averageScore || 0,
+        timeTakenMs: a._timeTakenMs,
+        attempts: a._totalAttempts,
+        name: a.name,
+      },
+      {
+        roundsPlayed: b.roundsPlayed,
+        averageScore: b.averageScore || 0,
+        timeTakenMs: b._timeTakenMs,
+        attempts: b._totalAttempts,
+        name: b.name,
+      }
+    );
   });
 
   return processed;

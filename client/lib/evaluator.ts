@@ -179,7 +179,8 @@ function checkConstraints(
   }
   if (c.requiredSections?.length) {
     total++;
-    if (c.requiredSections.every((s) => output.includes(s))) score++;
+    const normalizedOutput = output.toLowerCase();
+    if (c.requiredSections.every((s) => normalizedOutput.includes(s.toLowerCase()))) score++;
   }
   if (c.requireSteps) {
     total++;
@@ -247,31 +248,50 @@ function evaluateStructure(output: string): number {
   );
 }
 
+async function runPromptWithContext(
+  prompt: string,
+  input?: string,
+  inputLabel = "Input"
+) {
+  const content = input?.trim()
+    ? `${prompt}\n\n${inputLabel}:\n${input}`
+    : prompt;
+
+  const completion = await callLLM(
+    getOpenAI().chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content }],
+    })
+  );
+
+  return completion.choices[0].message.content || "";
+}
+
 // ── Per-round evaluators ──────────────────────────────────────────────────────
 
-async function evaluateOptimizeRound(userPrompt: string) {
+async function evaluateOptimizeRound(round: Round, userPrompt: string) {
   const brevityScore = getBrevityScore(userPrompt);
   if (brevityScore === 0) {
     return { finalScore: 0, progress: 0, reason: "Prompt exceeds 15 words" };
   }
 
-  const completion = await callLLM(
-    getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: userPrompt }],
-    })
-  );
-
-  const output = completion.choices[0].message.content || "";
+  const output = await runPromptWithContext(userPrompt, round.input, "Task");
   const { analogy: analogyQualityScore, prompt: promptScore } =
     await scoreCombined(userPrompt, output);
+  const similarityScore = round.expectedOutput
+    ? await getSimilarity(output, round.expectedOutput)
+    : 1;
 
   const finalScore =
-    0.4 * brevityScore + 0.4 * analogyQualityScore + 0.2 * promptScore;
+    0.35 * brevityScore +
+    0.25 * analogyQualityScore +
+    0.25 * similarityScore +
+    0.15 * promptScore;
   return {
     output,
     brevityScore,
     analogyQualityScore,
+    similarityScore,
     promptScore,
     finalScore,
     progress: Math.round(finalScore * 100),
@@ -302,37 +322,25 @@ function evaluateClassifyRound(
 }
 
 async function evaluateImproveRound(round: Round, userPrompt: string) {
-  const initial = round.originalPrompt || round.input || "";
-
-  const completion = await callLLM(
-    getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: `${initial}\n\nImprove this explanation:\n${userPrompt}`,
-        },
-      ],
-    })
+  const output = await runPromptWithContext(userPrompt, round.input, "Source Text");
+  const { quality: qualityScore, prompt: promptScore } = await scoreCombined(
+    userPrompt,
+    output
   );
-
-  const output = completion.choices[0].message.content || "";
-  const {
-    quality: qualityScore,
-    analogy: analogyScore,
-    prompt: promptScore,
-  } = await scoreCombined(userPrompt, output);
   const constraintScore = checkConstraints(round.constraints, userPrompt, output);
+  const similarityScore = round.expectedOutput
+    ? await getSimilarity(output, round.expectedOutput)
+    : 1;
 
   const finalScore =
-    0.4 * qualityScore +
-    0.2 * analogyScore +
+    0.35 * qualityScore +
+    0.25 * similarityScore +
     0.2 * promptScore +
     0.2 * constraintScore;
   return {
     output,
     qualityScore,
-    analogyScore,
+    similarityScore,
     promptScore,
     constraintScore,
     finalScore,
@@ -342,45 +350,45 @@ async function evaluateImproveRound(round: Round, userPrompt: string) {
 
 async function evaluateReverseRound(round: Round, userPrompt: string) {
   const target = round.expectedOutput || "";
+  const output = await runPromptWithContext(userPrompt);
 
-  const [sim, qualityScore] = await Promise.all([
-    getSimilarity(userPrompt, target),
-    Promise.resolve(scorePrompt(userPrompt)), // heuristic — no LLM call needed
+  const [sim, promptScore] = await Promise.all([
+    getSimilarity(output, target),
+    Promise.resolve(scorePrompt(userPrompt)),
   ]);
 
-  const constraintScore = checkConstraints(round.constraints, userPrompt, target);
-  const finalScore = 0.5 * sim + 0.3 * qualityScore + 0.2 * constraintScore;
+  const constraintScore = checkConstraints(round.constraints, userPrompt, output);
+  const finalScore = 0.6 * sim + 0.2 * promptScore + 0.2 * constraintScore;
   return {
+    output,
     recoveredPrompt: userPrompt,
     similarity: sim,
-    qualityScore,
+    promptScore,
     constraintScore,
     finalScore,
     progress: Math.round(finalScore * 100),
   };
 }
 
-async function evaluateStructuredRound(userPrompt: string) {
-  const completion = await callLLM(
-    getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: userPrompt }],
-    })
-  );
-
-  const output = completion.choices[0].message.content || "";
+async function evaluateStructuredRound(round: Round, userPrompt: string) {
+  const output = await runPromptWithContext(userPrompt, round.input, "Problem");
   // All three scores are heuristics — no extra LLM calls
   const reasoningScore = scoreReasoning(output);
   const structureScore = evaluateStructure(output);
   const promptScore = scorePrompt(userPrompt);
+  const constraintScore = checkConstraints(round.constraints, userPrompt, output);
 
   const finalScore =
-    0.4 * reasoningScore + 0.3 * structureScore + 0.3 * promptScore;
+    0.35 * reasoningScore +
+    0.25 * structureScore +
+    0.2 * promptScore +
+    0.2 * constraintScore;
   return {
     output,
     reasoningScore,
     structureScore,
     promptScore,
+    constraintScore,
     finalScore,
     progress: Math.round(finalScore * 100),
   };
@@ -453,22 +461,17 @@ export async function evaluateMetaBonusRound({
           messages: [
             {
               role: "user",
-              content: `${metaPrompt}\n\nBase Prompt:\n${basePrompt}`,
+              content: `${metaPrompt}\n\nScenario:\n${basePrompt}`,
             },
           ],
         })
       ),
-      callLLM(
-        getOpenAI().chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: finalPrompt }],
-        })
-      ),
+      runPromptWithContext(finalPrompt, basePrompt, "Scenario"),
     ]);
 
     const improvedPrompt =
       improvedPromptRes.choices[0].message.content || "";
-    const finalOutput = finalOutputRes.choices[0].message.content || "";
+    const finalOutput = finalOutputRes;
 
     const constraintScore = evaluateConstraints(finalOutput);
     const structureScore = evaluateStructure(finalOutput);
@@ -521,9 +524,9 @@ export async function evaluateRound(
     case "REVERSE":
       return evaluateReverseRound(round, userPrompt);
     case "OPTIMIZE":
-      return evaluateOptimizeRound(userPrompt);
+      return evaluateOptimizeRound(round, userPrompt);
     case "STRUCTURED":
-      return evaluateStructuredRound(userPrompt);
+      return evaluateStructuredRound(round, userPrompt);
     case "CLASSIFY":
       return evaluateClassifyRound(round, answers ?? {});
     default:
