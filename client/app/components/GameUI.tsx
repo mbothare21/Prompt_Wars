@@ -953,7 +953,7 @@ export default function GameUI() {
     completedAt?: string;
   };
 
-  const generatePlayerPDF = (p: MongoPlayer) => {
+  const downloadPlayerReport = (p: MongoPlayer) => {
     const formatPrompt = (prompt: unknown): string => {
       if (typeof prompt === "string") return prompt;
       if (prompt && typeof prompt === "object") {
@@ -1017,12 +1017,17 @@ export default function GameUI() {
 
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const win = window.open(url, "_blank");
-    if (win) {
-      win.onload = () => {
-        URL.revokeObjectURL(url);
-      };
-    }
+    const safeBaseName = (p.email || p.name || "player-report")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "player-report";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeBaseName}-prompt-wars-response-report.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const downloadPlayerResponses = async (email: string) => {
@@ -1040,7 +1045,7 @@ export default function GameUI() {
         alert(data.error ?? "Failed to fetch player data");
         return;
       }
-      generatePlayerPDF(data.player);
+      downloadPlayerReport(data.player);
     } catch {
       alert("Network error fetching player data");
     }
