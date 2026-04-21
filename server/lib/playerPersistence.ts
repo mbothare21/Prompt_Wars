@@ -16,13 +16,7 @@ function getTotalAttempts(session: GameSession): number {
 
 function getBaseInsertFields(session: GameSession) {
   return {
-    name: session.player.name,
     email: session.player.email,
-    roundsPlayed: 0,
-    timeTaken: 0,
-    avgAccuracy: 0,
-    attemptsTaken: 0,
-    rounds: [],
     createdAt: getCreatedAt(session),
   };
 }
@@ -51,6 +45,11 @@ export async function ensurePlayerRecord(session: GameSession): Promise<void> {
       $setOnInsert: getBaseInsertFields(session),
       $set: {
         name: session.player.name,
+        roundsPlayed: 0,
+        timeTaken: 0,
+        avgAccuracy: 0,
+        attemptsTaken: 0,
+        rounds: [],
       },
     },
     { upsert: true }

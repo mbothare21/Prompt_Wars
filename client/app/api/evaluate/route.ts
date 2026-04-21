@@ -8,14 +8,23 @@ import { persistTerminalSession } from "@server/lib/playerPersistence";
 export const runtime = "nodejs";
 
 const BONUS_SCORE_THRESHOLD = 0.92;
+const EVALUATOR_TIMEOUT_MS = (() => {
+  const parsed = Number(process.env.EVALUATOR_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+})();
 
-function withTimeout<T>(promise: Promise<T>, ms = 3000): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = EVALUATOR_TIMEOUT_MS): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error("Evaluator timeout")), ms)
     ),
   ]);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /timeout/i.test(message);
 }
 
 export async function POST(req: Request) {
@@ -75,13 +84,7 @@ export async function POST(req: Request) {
     if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
       return Response.json({ error: "Invalid answers" });
     }
-  } else {
-    if (typeof prompt !== "string" || prompt.trim().length < 3) {
-      return Response.json({ error: "Invalid prompt" });
-    }
-  }
-
-  if (round.type === "BONUS") {
+  } else if (round.type === "BONUS") {
     if (!metaPrompt || !finalPrompt) {
       return Response.json({ status: "INVALID_SUBMISSION", message: "Both inputs are required" });
     }
@@ -89,6 +92,10 @@ export async function POST(req: Request) {
       return Response.json({ error: "Already attempted" });
     }
     session.bonusAttempted = true;
+  } else {
+    if (typeof prompt !== "string" || prompt.trim().length < 3) {
+      return Response.json({ error: "Invalid prompt" });
+    }
   }
 
   session.attemptsPerRound[roundNum] = (session.attemptsPerRound[roundNum] || 0) + 1;
@@ -117,20 +124,46 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = round.type === "BONUS"
-    ? await withTimeout(
-        evaluateMetaBonusRound({
-          metaPrompt: metaPrompt ?? "",
-          finalPrompt: finalPrompt ?? "",
-          basePrompt: round.input ?? "",
-          targetOutput: round.targetOutput ?? round.expectedOutput ?? "",
-        }),
-        3000
-      )
-    : await withTimeout(
-        evaluateRound(round, prompt ?? "", answers),
-        3000
-      );
+  let result;
+  try {
+    result = round.type === "BONUS"
+      ? await withTimeout(
+          evaluateMetaBonusRound({
+            metaPrompt: metaPrompt ?? "",
+            finalPrompt: finalPrompt ?? "",
+            basePrompt: round.input ?? "",
+            targetOutput: round.targetOutput ?? round.expectedOutput ?? "",
+          })
+        )
+      : await withTimeout(
+          evaluateRound(round, prompt ?? "", answers)
+        );
+  } catch (error) {
+    const attemptsUsed = session.attemptsPerRound[roundNum] ?? 0;
+    if (attemptsUsed <= 1) {
+      delete session.attemptsPerRound[roundNum];
+    } else {
+      session.attemptsPerRound[roundNum] = attemptsUsed - 1;
+    }
+    if (round.type === "BONUS") {
+      session.bonusAttempted = false;
+    }
+    await updateSession(sessionId, session);
+
+    const timeout = isTimeoutError(error);
+    console.error(
+      timeout ? "[evaluate] evaluator timeout:" : "[evaluate] evaluator error:",
+      error
+    );
+
+    return Response.json({
+      status: timeout ? "EVALUATION_TIMEOUT" : "EVALUATION_ERROR",
+      retryable: true,
+      message: timeout
+        ? "Evaluation took too long. Please retry."
+        : "Evaluation failed. Please retry.",
+    });
+  }
 
   let finalScore = result.finalScore;
   let progress = result.progress;

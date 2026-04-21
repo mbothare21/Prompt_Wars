@@ -3,6 +3,16 @@ import { getSimilarity } from "./similarity";
 import type { Round } from "./types";
 import { cacheKey, cacheGet, cacheSet } from "./cache";
 
+function getTimeoutMs(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const LLM_TIMEOUT_MS = getTimeoutMs(
+  process.env.EVALUATOR_LLM_TIMEOUT_MS ?? process.env.OPENAI_TIMEOUT_MS,
+  12_000
+);
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ObjectConstraints = {
@@ -17,7 +27,7 @@ type CombinedScores = { quality: number; analogy: number; prompt: number };
 
 // ── LLM timeout wrapper ───────────────────────────────────────────────────────
 
-async function callLLM<T>(promise: Promise<T>, ms = 3000): Promise<T> {
+async function callLLM<T>(promise: Promise<T>, ms = LLM_TIMEOUT_MS): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>

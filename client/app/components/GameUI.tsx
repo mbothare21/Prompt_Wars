@@ -780,6 +780,16 @@ export default function GameUI() {
         return;
       }
 
+      if (status === "EVALUATION_TIMEOUT" || status === "EVALUATION_ERROR") {
+        setError(
+          typeof data.message === "string"
+            ? data.message
+            : "Evaluation system unavailable. Please retry."
+        );
+        await refreshRound(sid);
+        return;
+      }
+
       if (status === "NO_ATTEMPTS_LEFT") {
         setError("Access Denied. Lockout engaged.");
         finishGame();
