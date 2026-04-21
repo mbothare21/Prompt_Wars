@@ -1,6 +1,9 @@
+import { isAdminEmail, isAdminIdentity } from "@/lib/admin";
 import type { GameSession, GameStatus } from "@/lib/types";
 import { connectDB } from "./mongodb";
 import PlayerModel from "../models/Player";
+
+type PersistedGameStatus = GameStatus | "IN_PROGRESS";
 
 function getCreatedAt(session: GameSession): Date {
   return new Date(session.player.startedAt || session.startTime || Date.now());
@@ -21,49 +24,24 @@ function getBaseInsertFields(session: GameSession) {
   };
 }
 
-export async function findCompletedPlayerByEmail(email: string): Promise<boolean> {
-  const db = await connectDB();
-  if (!db) return false;
-
-  const existing = await PlayerModel.exists({
-    email,
-    completedAt: { $exists: true },
-  });
-
-  return Boolean(existing);
-}
-
-export async function ensurePlayerRecord(session: GameSession): Promise<void> {
-  if (!session.player.email) return;
-
-  const db = await connectDB();
-  if (!db) return;
-
-  await PlayerModel.updateOne(
-    { email: session.player.email },
-    {
-      $setOnInsert: getBaseInsertFields(session),
-      $set: {
-        name: session.player.name,
-        roundsPlayed: 0,
-        timeTaken: 0,
-        avgAccuracy: 0,
-        attemptsTaken: 0,
-        rounds: [],
-      },
-    },
-    { upsert: true }
+function shouldSkipPersistence(session: GameSession): boolean {
+  return (
+    !session.player.email ||
+    isAdminIdentity(session.player.name, session.player.email)
   );
 }
 
-export async function persistTerminalSession(
+async function upsertPlayerSnapshot(
   session: GameSession,
-  gameStatus: GameStatus
+  gameStatus: PersistedGameStatus
 ): Promise<void> {
-  if (!session.player.email) return;
+  if (shouldSkipPersistence(session)) return;
 
   const db = await connectDB();
   if (!db) return;
+
+  const completedAt =
+    gameStatus === "IN_PROGRESS" ? undefined : getCompletedAt(session);
 
   await PlayerModel.updateOne(
     { email: session.player.email },
@@ -76,10 +54,55 @@ export async function persistTerminalSession(
         avgAccuracy: session.player.averageScore,
         attemptsTaken: getTotalAttempts(session),
         gameStatus,
-        completedAt: getCompletedAt(session),
+        lastActivityAt: new Date(),
         rounds: session.pendingRounds ?? [],
+        ...(completedAt ? { completedAt } : {}),
+      },
+      $unset: {
+        ...(completedAt ? {} : { completedAt: "" }),
+        responseReport: "",
       },
     },
     { upsert: true }
   );
+}
+
+export async function findCompletedPlayerByEmail(email: string): Promise<boolean> {
+  if (isAdminEmail(email)) return false;
+
+  const db = await connectDB();
+  if (!db) return false;
+
+  const existing = await PlayerModel.exists({
+    email,
+    completedAt: { $exists: true },
+  });
+
+  return Boolean(existing);
+}
+
+export async function findAnyPlayerAttemptByEmail(email: string): Promise<boolean> {
+  if (isAdminEmail(email)) return false;
+
+  const db = await connectDB();
+  if (!db) return false;
+
+  const existing = await PlayerModel.exists({ email });
+  return Boolean(existing);
+}
+
+export async function ensurePlayerRecord(session: GameSession): Promise<void> {
+  if (shouldSkipPersistence(session)) return;
+  await upsertPlayerSnapshot(session, "IN_PROGRESS");
+}
+
+export async function persistProgressSnapshot(session: GameSession): Promise<void> {
+  await upsertPlayerSnapshot(session, "IN_PROGRESS");
+}
+
+export async function persistTerminalSession(
+  session: GameSession,
+  gameStatus: GameStatus
+): Promise<void> {
+  await upsertPlayerSnapshot(session, gameStatus);
 }

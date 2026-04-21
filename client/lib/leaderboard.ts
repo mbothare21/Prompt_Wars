@@ -1,5 +1,6 @@
 import { SESSION_TIME_LIMIT_MS } from "./gameConstants";
 import type { Player } from "./types";
+import { isAdminEmail } from "./admin";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 import { getPlayers } from "./playerStore";
@@ -77,7 +78,9 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
     .lean();
 
   const ranked = rankPlayers(
-    (dbPlayers as DbLeaderboardPlayer[]).map(normalizeDbPlayer)
+    (dbPlayers as DbLeaderboardPlayer[])
+      .filter((player) => !isAdminEmail(player.email))
+      .map(normalizeDbPlayer)
   );
   cachedLeaderboard = ranked;
   lastFetchTime = now;
@@ -87,6 +90,7 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
 function getFallbackLeaderboard(): Player[] {
   return rankPlayers(
     getPlayers()
+      .filter((player) => !isAdminEmail(player.email))
       .filter((player) => player.completed)
       .slice(0, 100)
   );

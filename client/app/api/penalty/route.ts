@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    void persistTerminalSession(session, "DISQUALIFIED").catch((e) =>
+    await persistTerminalSession(session, "DISQUALIFIED").catch((e) =>
       console.error("[penalty] MongoDB disqualify error:", e)
     );
 

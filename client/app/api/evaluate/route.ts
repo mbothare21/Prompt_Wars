@@ -3,7 +3,10 @@ import { ATTEMPT_LIMITS, PASS_THRESHOLDS } from "@/lib/gameConstants";
 import { isTimeUp } from "@/lib/time";
 import { evaluateRound, evaluateMetaBonusRound } from "@/lib/evaluator";
 import { savePlayer } from "@/lib/playerStore";
-import { persistTerminalSession } from "@server/lib/playerPersistence";
+import {
+  persistProgressSnapshot,
+  persistTerminalSession,
+} from "@server/lib/playerPersistence";
 
 export const runtime = "nodejs";
 
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    void persistTerminalSession(session, "TIME_OVER").catch((e) =>
+    await persistTerminalSession(session, "TIME_OVER").catch((e) =>
       console.error("[evaluate] MongoDB time-up error:", e)
     );
 
@@ -136,7 +139,7 @@ export async function POST(req: Request) {
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    void persistTerminalSession(session, "FAILED").catch((e) =>
+    await persistTerminalSession(session, "FAILED").catch((e) =>
       console.error("[evaluate] MongoDB attempts-exhausted error:", e)
     );
 
@@ -243,7 +246,7 @@ export async function POST(req: Request) {
       savePlayer(session.player);
       await updateSession(sessionId, session);
 
-      void persistTerminalSession(session, completedStatus).catch((e) =>
+      await persistTerminalSession(session, completedStatus).catch((e) =>
         console.error("[evaluate] MongoDB completion error:", e)
       );
 
@@ -258,6 +261,9 @@ export async function POST(req: Request) {
     }
 
     await updateSession(sessionId, session);
+    await persistProgressSnapshot(session).catch((e) =>
+      console.error("[evaluate] MongoDB progress snapshot error:", e)
+    );
     return Response.json({
       status: "ROUND_PASSED",
       nextRound: session.currentRound,
@@ -282,7 +288,7 @@ export async function POST(req: Request) {
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    void persistTerminalSession(session, "FAILED").catch((e) =>
+    await persistTerminalSession(session, "FAILED").catch((e) =>
       console.error("[evaluate] MongoDB final-attempt failure error:", e)
     );
 
@@ -296,7 +302,10 @@ export async function POST(req: Request) {
     });
   }
 
-  updateSession(sessionId, session);
+  await updateSession(sessionId, session);
+  await persistProgressSnapshot(session).catch((e) =>
+    console.error("[evaluate] MongoDB progress snapshot error:", e)
+  );
   return Response.json({
     status: "ROUND_FAILED",
     attemptsThisRound: session.attemptsPerRound[roundNum],

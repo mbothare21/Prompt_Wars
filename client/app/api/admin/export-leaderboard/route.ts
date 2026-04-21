@@ -1,5 +1,5 @@
 import { compareCompetitiveStanding } from "@/lib/ranking";
-import { verifyAdminToken } from "@/lib/admin";
+import { isAdminEmail, verifyAdminToken } from "@/lib/admin";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
@@ -40,25 +40,27 @@ export async function GET(req: Request) {
       .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
       .lean()) as PlayerDoc[];
 
-    const players = docs.map((doc) => ({
-      _id: doc._id.toString(),
-      name: doc.name ?? "Unknown",
-      email: doc.email,
-      roundsPlayed: doc.roundsPlayed ?? 0,
-      timeTaken: doc.timeTaken ?? 0,
-      avgAccuracy: doc.avgAccuracy ?? 0,
-      attemptsTaken: doc.attemptsTaken ?? 0,
-      gameStatus: doc.gameStatus ?? "IN_PROGRESS",
-      createdAt: doc.createdAt?.toISOString(),
-      completedAt: doc.completedAt?.toISOString(),
-      rounds: (doc.rounds ?? []).map((round) => ({
-        round: round.round ?? 0,
-        attempts: round.attempts ?? 0,
-        score: round.score ?? 0,
-        prompt: round.prompt ?? null,
-        output: round.output ?? "",
-      })),
-    }));
+    const players = docs
+      .filter((doc) => !isAdminEmail(doc.email))
+      .map((doc) => ({
+        _id: doc._id.toString(),
+        name: doc.name ?? "Unknown",
+        email: doc.email,
+        roundsPlayed: doc.roundsPlayed ?? 0,
+        timeTaken: doc.timeTaken ?? 0,
+        avgAccuracy: doc.avgAccuracy ?? 0,
+        attemptsTaken: doc.attemptsTaken ?? 0,
+        gameStatus: doc.gameStatus ?? "IN_PROGRESS",
+        createdAt: doc.createdAt?.toISOString(),
+        completedAt: doc.completedAt?.toISOString(),
+        rounds: (doc.rounds ?? []).map((round) => ({
+          round: round.round ?? 0,
+          attempts: round.attempts ?? 0,
+          score: round.score ?? 0,
+          prompt: round.prompt ?? null,
+          output: round.output ?? "",
+        })),
+      }));
 
     players.sort((a, b) =>
       compareCompetitiveStanding(

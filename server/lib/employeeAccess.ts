@@ -1,16 +1,14 @@
 import { validateAdminCredentials } from "@/lib/admin";
+import { connectDB } from "./mongodb";
 
-type AllowedEmployee = {
-  name: string;
-  email: string;
+type EmployeeDirectoryRecord = {
+  empName?: string;
+  empMail?: string;
 };
 
-const DEFAULT_COMPANY_EMAIL_DOMAIN = "prompt.com";
-
-// Add approved employee name/email pairs here when you want strict identity matching.
-const APPROVED_EMPLOYEES: AllowedEmployee[] = [
-  // { name: "Jane Doe", email: "jane.doe@prompt.com" },
-];
+const DEFAULT_COMPANY_EMAIL_DOMAIN = "calfus.com";
+const DEFAULT_EMPLOYEE_DB_NAME = "promptwars";
+const DEFAULT_EMPLOYEE_COLLECTION_NAME = "employeeDetails";
 
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -26,44 +24,50 @@ function getCompanyEmailDomain() {
     .toLowerCase();
 }
 
-function parseEnvAllowlist(): AllowedEmployee[] {
-  const raw = process.env.ALLOWED_EMPLOYEES_JSON;
-  if (!raw) return [];
+function getEmployeeDbName() {
+  return (
+    process.env.EMPLOYEE_DB_NAME?.trim() || DEFAULT_EMPLOYEE_DB_NAME
+  );
+}
 
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
+function getEmployeeCollectionName() {
+  return (
+    process.env.EMPLOYEE_COLLECTION_NAME?.trim() ||
+    DEFAULT_EMPLOYEE_COLLECTION_NAME
+  );
+}
 
-    return parsed.flatMap((entry) => {
-      if (!entry || typeof entry !== "object") return [];
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-      const candidate = entry as Record<string, unknown>;
-      if (
-        typeof candidate.name !== "string" ||
-        !candidate.name.trim() ||
-        typeof candidate.email !== "string" ||
-        !candidate.email.trim()
-      ) {
-        return [];
-      }
-
-      return [
-        {
-          name: candidate.name.trim(),
-          email: candidate.email.trim(),
-        },
-      ];
-    });
-  } catch {
-    return [];
+async function findEmployeeRecordByEmail(
+  email: string
+): Promise<EmployeeDirectoryRecord | null> {
+  const conn = await connectDB();
+  if (!conn) {
+    throw new Error("MongoDB unavailable");
   }
+
+  const employeeDbName = getEmployeeDbName();
+  const employeeCollectionName = getEmployeeCollectionName();
+  const db = conn.connection.getClient().db(employeeDbName);
+  const emailMatcher = new RegExp(`^${escapeRegex(email)}$`, "i");
+  const record = (await db.collection(employeeCollectionName).findOne(
+    { empMail: emailMatcher },
+    {
+      projection: {
+        _id: 0,
+        empName: 1,
+        empMail: 1,
+      },
+    }
+  )) as EmployeeDirectoryRecord | null;
+
+  return record?.empMail ? record : null;
 }
 
-function getApprovedEmployees() {
-  return [...APPROVED_EMPLOYEES, ...parseEnvAllowlist()];
-}
-
-export function validateEmployeeIdentity(name: string, email?: string) {
+export async function validateEmployeeIdentity(name: string, email?: string) {
   const trimmedName = name.trim();
   const trimmedEmail = email?.trim() ?? "";
 
@@ -86,23 +90,24 @@ export function validateEmployeeIdentity(name: string, email?: string) {
     };
   }
 
-  const approvedEmployees = getApprovedEmployees();
-  if (approvedEmployees.length === 0) {
+  try {
+    const employee = await findEmployeeRecordByEmail(trimmedEmail);
+    if (
+      !employee?.empName ||
+      normalizeName(employee.empName) !== normalizeName(trimmedName)
+    ) {
+      return {
+        ok: false,
+        error: "This name and email pair does not match the employee directory.",
+      };
+    }
+
     return { ok: true, isAdmin: false };
-  }
-
-  const isApproved = approvedEmployees.some(
-    (employee) =>
-      normalizeName(employee.name) === normalizeName(trimmedName) &&
-      normalizeEmail(employee.email) === normalizeEmail(trimmedEmail)
-  );
-
-  if (!isApproved) {
+  } catch (error) {
+    console.error("[employeeAccess] employee directory lookup failed:", error);
     return {
       ok: false,
-      error: "This name and email pair is not on the approved employee list.",
+      error: "Employee directory verification is unavailable. Please try again.",
     };
   }
-
-  return { ok: true, isAdmin: false };
 }

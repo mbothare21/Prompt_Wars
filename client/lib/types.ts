@@ -1,5 +1,6 @@
 // /lib/types.ts
 export type GameStatus =
+  | "IN_PROGRESS"
   | "COMPLETED"
   | "COMPLETED_WITH_BONUS"
   | "FAILED"

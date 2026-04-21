@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { createSession, getSession } from "@/lib/gameStore";
+import { createSession, getSession, updateSession } from "@/lib/gameStore";
 import { getRounds } from "@/lib/roundsStore";
 import { SESSION_TIME_LIMIT_MS } from "@/lib/gameConstants";
 import {
@@ -10,7 +10,9 @@ import { isTimeUp } from "@/lib/time";
 import type { GameSession } from "@/lib/types";
 import {
   ensurePlayerRecord,
+  findAnyPlayerAttemptByEmail,
   findCompletedPlayerByEmail,
+  persistTerminalSession,
 } from "@server/lib/playerPersistence";
 import { validateEmployeeIdentity } from "@server/lib/employeeAccess";
 
@@ -32,10 +34,19 @@ export async function POST(req: Request) {
     /* empty or invalid body */
   }
 
-  const identityCheck = validateEmployeeIdentity(name, email);
+  const identityCheck = await validateEmployeeIdentity(name, email);
   if (!identityCheck.ok) {
     return Response.json(
       { error: identityCheck.error ?? "Identity verification failed." },
+      { status: 403 }
+    );
+  }
+  if (identityCheck.isAdmin) {
+    return Response.json(
+      {
+        error:
+          "Admin credentials are reserved for the admin preview terminal and cannot start a player session.",
+      },
       { status: 403 }
     );
   }
@@ -50,6 +61,25 @@ export async function POST(req: Request) {
           return Response.json({
             status: "ALREADY_PLAYED",
             message: "You have already completed the game.",
+          });
+        }
+
+        if (existing && !existing.completed && isTimeUp(existing)) {
+          existing.status = "TIME_UP";
+          existing.completed = true;
+          existing.player.completed = true;
+          existing.player.completedAt = Date.now();
+          existing.player.attemptsPerRound = { ...existing.attemptsPerRound };
+          existing.player.timeLimit = existing.timeLimit;
+          existing.player.gameStatus = "TIME_OVER";
+          await updateSession(existingSessionId, existing);
+          await persistTerminalSession(existing, "TIME_OVER").catch((e: unknown) =>
+            console.error("[start-game] MongoDB expired-session error:", e)
+          );
+
+          return Response.json({
+            status: "ALREADY_PLAYED",
+            message: "Your previous session has already expired.",
           });
         }
 
@@ -82,6 +112,15 @@ export async function POST(req: Request) {
         return Response.json({
           status: "ALREADY_PLAYED",
           message: "You have already completed the game.",
+        });
+      }
+
+      const alreadyStarted = await findAnyPlayerAttemptByEmail(email);
+      if (alreadyStarted) {
+        return Response.json({
+          status: "ALREADY_PLAYED",
+          message:
+            "An attempt for this email is already on record. Resume the existing run while it is still active; otherwise contact an admin.",
         });
       }
     } catch (e) {

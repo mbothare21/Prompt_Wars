@@ -1,4 +1,4 @@
-import { verifyAdminToken } from "@/lib/admin";
+import { isAdminEmail, verifyAdminToken } from "@/lib/admin";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
@@ -36,6 +36,9 @@ export async function GET(req: Request) {
   const email = searchParams.get("email")?.trim().toLowerCase();
   if (!email) {
     return Response.json({ error: "Email is required" }, { status: 400 });
+  }
+  if (isAdminEmail(email)) {
+    return Response.json({ error: "Player not found" }, { status: 404 });
   }
 
   try {

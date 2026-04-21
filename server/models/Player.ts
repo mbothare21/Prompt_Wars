@@ -20,11 +20,19 @@ const PlayerSchema = new Schema({
 
   gameStatus: {
     type: String,
-    enum: ["COMPLETED", "COMPLETED_WITH_BONUS", "FAILED", "TIME_OVER", "DISQUALIFIED"],
-    default: "COMPLETED",
+    enum: [
+      "IN_PROGRESS",
+      "COMPLETED",
+      "COMPLETED_WITH_BONUS",
+      "FAILED",
+      "TIME_OVER",
+      "DISQUALIFIED",
+    ],
+    default: "IN_PROGRESS",
   },
 
   rounds: [RoundSchema],
+  lastActivityAt: Date,
 
   createdAt: { type: Date, default: Date.now },
   completedAt: Date,

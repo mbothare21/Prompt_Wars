@@ -87,6 +87,7 @@ function formatTitle(type: string | undefined): string {
 }
 
 const GAME_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  IN_PROGRESS: { label: "In Progress", color: "text-slate-400" },
   COMPLETED: { label: "Completed", color: "text-green-400" },
   COMPLETED_WITH_BONUS: { label: "Completed + Bonus", color: "text-emerald-300" },
   COMPLETED_BONUS: { label: "Completed + Bonus", color: "text-emerald-300" },
@@ -324,6 +325,10 @@ export default function GameUI() {
           stats?: typeof stats;
           violations?: number;
           initialSessionSeconds?: number;
+          promptInput?: string;
+          metaPromptInput?: string;
+          generatedPrompt?: string | null;
+          dropdownSelections?: Record<string, string>;
         };
         if (s.player) setPlayer(s.player);
         if (s.sessionId) setSessionId(s.sessionId);
@@ -332,6 +337,16 @@ export default function GameUI() {
         if (typeof s.violations === "number") setViolations(s.violations);
         if (typeof s.initialSessionSeconds === "number") {
           initialSessionSecondsRef.current = s.initialSessionSeconds;
+        }
+        if (typeof s.promptInput === "string") setPromptInput(s.promptInput);
+        if (typeof s.metaPromptInput === "string") {
+          setMetaPromptInput(s.metaPromptInput);
+        }
+        if (typeof s.generatedPrompt === "string" || s.generatedPrompt === null) {
+          setGeneratedPrompt(s.generatedPrompt ?? null);
+        }
+        if (s.dropdownSelections && typeof s.dropdownSelections === "object") {
+          setDropdownSelections(s.dropdownSelections);
         }
 
         const restoredPhase = s.phase;
@@ -375,9 +390,25 @@ export default function GameUI() {
         stats,
         violations,
         initialSessionSeconds: initialSessionSecondsRef.current,
+        promptInput,
+        metaPromptInput,
+        generatedPrompt,
+        dropdownSelections,
       })
     );
-  }, [isRestored, phase, player, sessionId, roundNumber, stats, violations]);
+  }, [
+    isRestored,
+    phase,
+    player,
+    sessionId,
+    roundNumber,
+    stats,
+    violations,
+    promptInput,
+    metaPromptInput,
+    generatedPrompt,
+    dropdownSelections,
+  ]);
 
   const finishGame = useCallback((note?: string) => {
     if (passAdvanceTimeoutRef.current) {
@@ -1473,6 +1504,7 @@ export default function GameUI() {
                     🔒 Persistence Rules
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
+                    <li>Enter your <strong className="text-slate-200">real full name</strong> and approved <strong className="text-slate-200">@calfus.com</strong> email to unlock the terminal.</li>
                     <li><strong className="text-slate-200">One attempt</strong> per operative identity.</li>
                     <li>Terminal reboots (refresh) will <strong className="text-cyan-600 font-bold">NOT</strong> reset the timer.</li>
                     <li>Connections resume from point of failure.</li>
@@ -1524,7 +1556,7 @@ export default function GameUI() {
                   Operative Login
                 </h1>
                 <p className="text-slate-500 text-xs font-mono uppercase tracking-wider">
-                  Input credentials to unlock terminal.
+                  Input your real name and approved @calfus.com email.
                 </p>
               </div>
               {error && (
@@ -1544,7 +1576,7 @@ export default function GameUI() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Comm-Link / Email</label>
+                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Comm-Link / @calfus.com Email</label>
                   <input
                     type="email"
                     className="w-full p-4 bg-black/80 rounded border border-cyan-900/50 text-cyan-300 outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 font-mono text-sm shadow-[inset_0_0_10px_rgba(0,0,0,0.8)] transition-all"

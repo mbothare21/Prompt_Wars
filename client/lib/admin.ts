@@ -9,8 +9,18 @@ function normalize(value: string) {
   return value.trim().toLowerCase();
 }
 
+export function isAdminEmail(email?: string) {
+  if (!email) return false;
+  return normalize(email) === normalize(ADMIN_EMAIL);
+}
+
+export function isAdminIdentity(name?: string, email?: string) {
+  if (!name || !email) return false;
+  return normalize(name) === normalize(ADMIN_NAME) && isAdminEmail(email);
+}
+
 export function validateAdminCredentials(name: string, email: string) {
-  return normalize(name) === normalize(ADMIN_NAME) && normalize(email) === normalize(ADMIN_EMAIL);
+  return isAdminIdentity(name, email);
 }
 
 function base64url(input: string) {

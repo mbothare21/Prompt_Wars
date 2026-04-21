@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    void persistTerminalSession(session, "TIME_OVER").catch((e) =>
+    await persistTerminalSession(session, "TIME_OVER").catch((e) =>
       console.error("[get-round] MongoDB time-up error:", e)
     );
 
