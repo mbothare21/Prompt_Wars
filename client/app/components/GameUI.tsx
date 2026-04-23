@@ -31,6 +31,7 @@ type RoundPayload = {
   instruction?: string | null;
   originalPrompt?: string | null;
   input?: string | null;
+  referenceExample?: string | null;
   expectedOutput?: string | null;
   constraints?: unknown;
   promptParts?: PromptPart[] | null;
@@ -47,6 +48,7 @@ type RoundViewData = {
   instruction?: string | null;
   originalPrompt?: string | null;
   input?: string | null;
+  referenceExample?: string | null;
   expectedOutput?: string | null;
   constraints?: unknown;
   promptParts?: PromptPart[] | null;
@@ -78,8 +80,18 @@ type AdminPlayer = {
   }[];
 };
 
+const ROUND_TYPE_NAMES: Record<string, string> = {
+  CLASSIFY: "Signal Scan",
+  IMPROVE: "Prompt Refinery",
+  REVERSE: "Backtrace",
+  OPTIMIZE: "Compression Chamber",
+  STRUCTURED: "Protocol Stack",
+  BONUS: "Prompt Forge",
+};
+
 function formatTitle(type: string | undefined): string {
   if (!type) return "Challenge";
+  if (ROUND_TYPE_NAMES[type]) return ROUND_TYPE_NAMES[type];
   return type
     .split("_")
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -133,6 +145,13 @@ function formatConstraints(constraints: unknown): string[] {
   if (parts.length === 0) return ["No specific constraints."];
   return parts;
 }
+
+const OPTIMIZE_GUIDANCE = [
+  "There is no single required analogy or sample answer for this round.",
+  "You can choose any concept. The reference analogy only shows the style of explanation.",
+  "Your score comes from brevity plus whether the prompt still produces a clear, simple analogy.",
+  "Optimize for effectiveness, not for copying a specific example.",
+];
 
 export default function GameUI() {
   const [phase, setPhase] = useState<GamePhase>("splash");
@@ -232,6 +251,7 @@ export default function GameUI() {
         instruction: data.instruction,
         originalPrompt: data.originalPrompt,
         input: data.input,
+        referenceExample: data.referenceExample,
         expectedOutput: data.expectedOutput,
         constraints: data.constraints,
         promptParts: data.promptParts,
@@ -914,12 +934,12 @@ export default function GameUI() {
     currentRoundData?.type !== "BONUS" || Boolean(generatedPrompt);
 
   const ROUND_TYPE_LABELS: Record<number, string> = {
-    1: "CLASSIFY (MCQ)",
-    2: "IMPROVE",
-    3: "REVERSE",
-    4: "OPTIMIZE",
-    5: "STRUCTURED",
-    6: "BONUS (Meta-Prompting)",
+    1: ROUND_TYPE_NAMES.CLASSIFY,
+    2: ROUND_TYPE_NAMES.IMPROVE,
+    3: ROUND_TYPE_NAMES.REVERSE,
+    4: ROUND_TYPE_NAMES.OPTIMIZE,
+    5: ROUND_TYPE_NAMES.STRUCTURED,
+    6: ROUND_TYPE_NAMES.BONUS,
   };
 
   type MongoRound = { round: number; attempts: number; score: number; prompt: unknown; output?: string };
@@ -1178,10 +1198,36 @@ export default function GameUI() {
                               </div>
                             )}
 
+                            {previewRound.referenceExample && (
+                              <div className="bg-emerald-950/20 p-4 rounded border border-emerald-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(16,185,129,0.08)]">
+                                <h3 className="text-xs uppercase tracking-widest text-emerald-500/70 mb-2 font-bold">
+                                  Reference Analogy
+                                </h3>
+                                <div className="font-mono text-xs text-emerald-300/80 whitespace-pre-wrap">
+                                  {previewRound.referenceExample}
+                                </div>
+                              </div>
+                            )}
+
+                            {previewRound.type === "OPTIMIZE" && (
+                              <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
+                                <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
+                                  Scoring Focus
+                                </h3>
+                                <ul className="list-square list-inside font-mono text-xs text-green-400/80 space-y-2">
+                                  {OPTIMIZE_GUIDANCE.map((note) => (
+                                    <li key={note} className="pl-2 border-l border-green-900/40 ml-1">
+                                      {note}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
                             {previewRound.expectedOutput && (
                               <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                                 <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                                  {adminRoundNumber === 4 ? "Required Extraction Format" : "Target Signature"}
+                                  Target Signature
                                   {adminRoundNumber === 2 && <span className="text-red-500/70 ml-2">(Classified)</span>}
                                 </h3>
                                 <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
@@ -1662,10 +1708,36 @@ export default function GameUI() {
                     </div>
                   )}
 
+                  {currentRoundData.referenceExample && (
+                    <div className="bg-emerald-950/20 p-4 rounded border border-emerald-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(16,185,129,0.08)]">
+                      <h3 className="text-xs uppercase tracking-widest text-emerald-500/70 mb-2 font-bold">
+                        Reference Analogy
+                      </h3>
+                      <div className="font-mono text-xs text-emerald-300/80 whitespace-pre-wrap">
+                        {currentRoundData.referenceExample}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentRoundData.type === "OPTIMIZE" && (
+                    <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
+                      <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
+                        Scoring Focus
+                      </h3>
+                      <ul className="list-square list-inside font-mono text-xs text-green-400/80 space-y-2">
+                        {OPTIMIZE_GUIDANCE.map((note) => (
+                          <li key={note} className="pl-2 border-l border-green-900/40 ml-1">
+                            {note}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {currentRoundData.expectedOutput && roundNumber !== 1 && (
                     <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                       <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                        {roundNumber === 4 ? "Required Extraction Format" : "Target Signature"}
+                        Target Signature
                       </h3>
                       <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
                         {currentRoundData.expectedOutput}

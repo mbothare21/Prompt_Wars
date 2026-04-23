@@ -150,11 +150,11 @@ User drop-off after initial engagement`,
             roundNumber: 4,
             type: "OPTIMIZE",
             instruction:
-                "Write the SHORTEST prompt (≤15 words) to explain a complex concept simply using an analogy.",
+                "Write the SHORTEST prompt (≤15 words) that still makes the AI explain any concept clearly using an analogy.",
             input:
-                "Explain a complex concept in a simple way using an analogy",
-            expectedOutput:
-                "AI is like a trained cricketer who has seen millions of deliveries and uses that experience to decide how to play the next ball.\u200B",
+                "Explain any concept in simple terms using an analogy.",
+            referenceExample:
+                "Example only: if the concept were AI, you could say \"AI is like a cricket batter who has faced thousands of balls, learned the patterns, and uses that experience to decide the next shot.",
             constraints: { maxWords: 15 },
         },
 

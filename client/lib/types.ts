@@ -39,6 +39,7 @@ export type Round = {
   /** Weak baseline prompt the player should improve on (optional). */
   originalPrompt?: string;
   input?: string;
+  referenceExample?: string;
   /** @deprecated prefer instruction + input */
   challenge?: string;
   expectedOutput?: string;

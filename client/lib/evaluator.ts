@@ -735,20 +735,21 @@ async function scoreOptimizeOutcome(
   output: string
 ) {
   const brevityScore = getBrevityScore(prompt);
-  const { analogy: analogyQualityScore, prompt: promptScore } =
+  const {
+    quality: qualityScore,
+    analogy: analogyQualityScore,
+    prompt: promptScore,
+  } =
     await scoreCombined(prompt, output);
-  const similarityScore = round.expectedOutput
-    ? await getSimilarity(output, round.expectedOutput)
-    : 1;
   const taskOutputScore =
-    0.55 * analogyQualityScore +
-    0.45 * similarityScore;
+    0.55 * qualityScore +
+    0.45 * analogyQualityScore;
   const promptCraftScore = 0.6 * brevityScore + 0.4 * promptScore;
 
   return {
     brevityScore,
+    qualityScore,
     analogyQualityScore,
-    similarityScore,
     promptScore,
     promptCraftScore,
     taskOutputScore,
