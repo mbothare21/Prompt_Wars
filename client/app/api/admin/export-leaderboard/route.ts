@@ -1,36 +1,14 @@
-import { compareCompetitiveStanding } from "@/lib/ranking";
 import { isAdminEmail, verifyAdminToken } from "@/lib/admin";
+import {
+  getFallbackAdminPlayerExports,
+  sortAdminPlayers,
+  toAdminPlayerExport,
+  type RawAdminPlayerDoc,
+} from "@/lib/adminPlayers";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
 export const runtime = "nodejs";
-
-type PlayerDoc = {
-  _id: { toString(): string };
-  name?: string;
-  email?: string;
-  roundsPlayed?: number;
-  timeTaken?: number;
-  avgAccuracy?: number;
-  attemptsTaken?: number;
-  gameStatus?: string;
-  createdAt?: Date | string | number;
-  completedAt?: Date | string | number;
-  rounds?: {
-    round?: number;
-    attempts?: number;
-    score?: number;
-    prompt?: unknown;
-    output?: string;
-  }[];
-};
-
-function toIsoString(value: Date | string | number | undefined) {
-  if (value == null) return undefined;
-  if (value instanceof Date) return value.toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
-}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -41,56 +19,27 @@ export async function GET(req: Request) {
   }
 
   try {
-    await connectDB();
+    const db = await connectDB();
+    if (!db) {
+      return Response.json({ players: getFallbackAdminPlayerExports() });
+    }
+
     const docs = (await PlayerModel.find({})
       .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
       .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
-      .lean()) as PlayerDoc[];
+      .lean()) as RawAdminPlayerDoc[];
 
-    const players = docs
-      .filter((doc) => !isAdminEmail(doc.email))
-      .map((doc) => ({
-        _id: doc._id.toString(),
-        name: doc.name ?? "Unknown",
-        email: doc.email,
-        roundsPlayed: doc.roundsPlayed ?? 0,
-        timeTaken: doc.timeTaken ?? 0,
-        avgAccuracy: doc.avgAccuracy ?? 0,
-        attemptsTaken: doc.attemptsTaken ?? 0,
-        gameStatus: doc.gameStatus ?? "IN_PROGRESS",
-        createdAt: toIsoString(doc.createdAt),
-        completedAt: toIsoString(doc.completedAt),
-        rounds: (doc.rounds ?? []).map((round) => ({
-          round: round.round ?? 0,
-          attempts: round.attempts ?? 0,
-          score: round.score ?? 0,
-          prompt: round.prompt ?? null,
-          output: round.output ?? "",
-        })),
-      }));
-
-    players.sort((a, b) =>
-      compareCompetitiveStanding(
-        {
-          roundsPlayed: a.roundsPlayed,
-          averageScore: a.avgAccuracy,
-          timeTakenMs: a.timeTaken,
-          attempts: a.attemptsTaken,
-          name: a.name,
-        },
-        {
-          roundsPlayed: b.roundsPlayed,
-          averageScore: b.avgAccuracy,
-          timeTakenMs: b.timeTaken,
-          attempts: b.attemptsTaken,
-          name: b.name,
-        }
-      )
+    const players = sortAdminPlayers(
+      docs
+        .filter((doc) =>
+          !isAdminEmail(typeof doc.email === "string" ? doc.email : undefined)
+        )
+        .map((doc, index) => toAdminPlayerExport(doc, index))
     );
 
     return Response.json({ players });
   } catch (e) {
     console.error("[admin/export-leaderboard]", e);
-    return Response.json({ error: "Failed to fetch leaderboard" }, { status: 500 });
+    return Response.json({ players: getFallbackAdminPlayerExports() });
   }
 }

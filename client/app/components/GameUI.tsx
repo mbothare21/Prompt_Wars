@@ -532,12 +532,12 @@ export default function GameUI() {
 
   const loadAdminPlayers = async (token: string) => {
     try {
-      const res = await fetch("/api/admin/export-leaderboard", {
+      const res = await fetch("/api/admin/leaderboard", {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      let data: { players?: Record<string, unknown>[] };
+      let data: { players?: AdminPlayer[] };
       try {
         data = (await res.json()) as typeof data;
       } catch {
@@ -550,25 +550,8 @@ export default function GameUI() {
         return;
       }
 
-      const mapped = (data.players ?? []).map((p, i) => ({
-        playerId: (p._id as string) ?? String(i),
-        name: (p.name as string) ?? "Unknown",
-        email: p.email as string | undefined,
-        roundsPlayed: (p.roundsPlayed as number) ?? 0,
-        timeTakenSec: Math.round(
-          ((p.timeTaken as number) ?? 0) > 10000
-            ? ((p.timeTaken as number) ?? 0) / 1000
-            : ((p.timeTaken as number) ?? 0)
-        ),
-        averageScore: (p.avgAccuracy as number) ?? 0,
-        attemptsUsed: (p.attemptsTaken as number) ?? 0,
-        completed:
-          p.gameStatus === "COMPLETED" || p.gameStatus === "COMPLETED_WITH_BONUS",
-        gameStatus: p.gameStatus as string | undefined,
-      }));
-
       startTransition(() => {
-        setAdminPlayers(mapped);
+        setAdminPlayers(data.players ?? []);
       });
     } catch {
       setError("Network error loading players.");

@@ -1,35 +1,12 @@
 import { isAdminEmail, verifyAdminToken } from "@/lib/admin";
+import {
+  toAdminPlayerExport,
+  type RawAdminPlayerDoc,
+} from "@/lib/adminPlayers";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
 export const runtime = "nodejs";
-
-type PlayerDoc = {
-  _id: { toString(): string };
-  name?: string;
-  email?: string;
-  roundsPlayed?: number;
-  timeTaken?: number;
-  avgAccuracy?: number;
-  attemptsTaken?: number;
-  gameStatus?: string;
-  createdAt?: Date | string | number;
-  completedAt?: Date | string | number;
-  rounds?: {
-    round?: number;
-    attempts?: number;
-    score?: number;
-    prompt?: unknown;
-    output?: string;
-  }[];
-};
-
-function toIsoString(value: Date | string | number | undefined) {
-  if (value == null) return undefined;
-  if (value instanceof Date) return value.toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
-}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -49,35 +26,24 @@ export async function GET(req: Request) {
   }
 
   try {
-    await connectDB();
+    const db = await connectDB();
+    if (!db) {
+      return Response.json(
+        { error: "Player responses require MongoDB persistence" },
+        { status: 503 }
+      );
+    }
+
     const doc = (await PlayerModel.findOne({ email })
       .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
-      .lean()) as PlayerDoc | null;
+      .lean()) as RawAdminPlayerDoc | null;
 
     if (!doc) {
       return Response.json({ error: "Player not found" }, { status: 404 });
     }
 
     return Response.json({
-      player: {
-        _id: doc._id.toString(),
-        name: doc.name ?? "Unknown",
-        email: doc.email ?? email,
-        roundsPlayed: doc.roundsPlayed ?? 0,
-        timeTaken: doc.timeTaken ?? 0,
-        avgAccuracy: doc.avgAccuracy ?? 0,
-        attemptsTaken: doc.attemptsTaken ?? 0,
-        gameStatus: doc.gameStatus ?? "IN_PROGRESS",
-        createdAt: toIsoString(doc.createdAt),
-        completedAt: toIsoString(doc.completedAt),
-        rounds: (doc.rounds ?? []).map((round) => ({
-          round: round.round ?? 0,
-          attempts: round.attempts ?? 0,
-          score: round.score ?? 0,
-          prompt: round.prompt ?? null,
-          output: round.output ?? "",
-        })),
-      },
+      player: toAdminPlayerExport(doc),
     });
   } catch (e) {
     console.error("[admin/player-responses]", e);
