@@ -1,0 +1,13 @@
+pytest
+pytest-asyncio
+httpx
+setuptools
+wheel
+fastapi[all]
+uvicorn[standard]
+motor
+pymongo
+redis
+openai
+python-dotenv
+pydantic

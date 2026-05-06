@@ -1,0 +1,31 @@
+[project]
+name = "PromptWars_Aetherion"
+version = "1.0.0"
+description = "Prompt Wars - AI Escape Room game backend in Python/FastAPI"
+authors = [{name = "Maitrey Bothare", email = "maitrey.bothare@calfus.com"}]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "motor>=3.6.0",
+    "pymongo>=4.10.0",
+    "redis>=5.0.0",
+    "openai>=1.57.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.10.0",
+    "httpx>=0.28.0",
+]
+dynamic = ["optional-dependencies"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+optional-dependencies = {dev = {file = ["dev-requirements.txt"]}}
+
+[tool.setuptools.packages.find]
+include = ["PromptWars_Aetherion*"]
+
+[project.scripts]
+prompt-wars = "PromptWars_Aetherion.main:run"

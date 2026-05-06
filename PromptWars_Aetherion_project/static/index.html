@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prompt Escape Room</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Courier New', monospace; min-height: 100vh; }
+  a { color: #38bdf8; }
+
+  /* Layout */
+  .container { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1rem; }
+  .card-dark { background: #0f172a; border: 1px solid #1e293b; border-radius: 0.5rem; padding: 1rem; margin-bottom: 0.75rem; }
+
+  /* Typography */
+  h1 { font-size: 2.5rem; font-weight: 700; }
+  h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.75rem; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  p { line-height: 1.6; color: #94a3b8; }
+  pre { white-space: pre-wrap; word-break: break-word; font-family: 'Courier New', monospace; font-size: 0.85rem; }
+  label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.25rem; }
+
+  /* Colors */
+  .text-cyan { color: #22d3ee; }
+  .text-green { color: #4ade80; }
+  .text-amber { color: #fbbf24; }
+  .text-red { color: #f87171; }
+  .text-slate { color: #94a3b8; }
+  .text-emerald { color: #34d399; }
+  .text-blue { color: #60a5fa; }
+  .text-purple { color: #c084fc; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.6rem 1.4rem;
+         border-radius: 0.5rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+         font-family: inherit; font-size: 0.9rem; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: #0ea5e9; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #0284c7; }
+  .btn-green { background: #16a34a; color: #fff; }
+  .btn-green:hover:not(:disabled) { background: #15803d; }
+  .btn-red { background: #dc2626; color: #fff; }
+  .btn-red:hover:not(:disabled) { background: #b91c1c; }
+  .btn-outline { background: transparent; border: 1px solid #475569; color: #94a3b8; }
+  .btn-outline:hover:not(:disabled) { border-color: #94a3b8; color: #e2e8f0; }
+  .btn-amber { background: #d97706; color: #fff; }
+  .btn-amber:hover:not(:disabled) { background: #b45309; }
+
+  /* Inputs */
+  input, textarea, select {
+    width: 100%; background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    border-radius: 0.5rem; padding: 0.6rem 0.8rem; font-family: inherit; font-size: 0.9rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #0ea5e9; }
+  textarea { resize: vertical; min-height: 120px; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 0.3rem; font-size: 0.75rem; font-weight: 600; }
+  .badge-cyan { background: #164e63; color: #22d3ee; }
+  .badge-green { background: #14532d; color: #4ade80; }
+  .badge-amber { background: #78350f; color: #fbbf24; }
+  .badge-red { background: #7f1d1d; color: #f87171; }
+  .badge-purple { background: #4a1d96; color: #c084fc; }
+
+  /* Progress bar */
+  .progress-bar { background: #1e293b; border-radius: 9999px; height: 8px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 9999px; transition: width 0.5s ease; background: #0ea5e9; }
+
+  /* Violation dots */
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin: 0 2px; }
+  .dot-filled { background: #f87171; }
+  .dot-empty { background: #334155; }
+
+  /* Timer */
+  .timer { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .timer-green { color: #4ade80; }
+  .timer-amber { color: #fbbf24; }
+  .timer-red { color: #f87171; }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+  @media (max-width: 640px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  /* Flex */
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .gap-2 { gap: 0.5rem; }
+  .gap-3 { gap: 0.75rem; }
+  .gap-4 { gap: 1rem; }
+  .flex-wrap { flex-wrap: wrap; }
+
+  /* Spacing */
+  .mt-1 { margin-top: 0.25rem; }
+  .mt-2 { margin-top: 0.5rem; }
+  .mt-3 { margin-top: 0.75rem; }
+  .mt-4 { margin-top: 1rem; }
+  .mb-2 { margin-bottom: 0.5rem; }
+  .mb-3 { margin-bottom: 0.75rem; }
+  .mb-4 { margin-bottom: 1rem; }
+
+  /* Misc */
+  .hidden { display: none !important; }
+  .text-center { text-align: center; }
+  .text-right { text-align: right; }
+  .border-top { border-top: 1px solid #334155; padding-top: 0.75rem; }
+  .rounded { border-radius: 0.5rem; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .italic { font-style: italic; }
+  .divider { border: none; border-top: 1px solid #334155; margin: 1rem 0; }
+  .spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid #475569;
+             border-top-color: #0ea5e9; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .score-bar-wrap { background: #1e293b; border-radius: 9999px; height: 6px; overflow:hidden; margin-top: 4px; }
+  .score-bar-fill { height: 100%; border-radius: 9999px; background: #0ea5e9; transition: width 0.5s; }
+  .terminal-panel { position: relative; background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(51, 65, 85, 0.9); box-shadow: 0 0 50px rgba(0, 0, 0, 0.7), inset 0 0 28px rgba(0, 0, 0, 0.45); overflow: hidden; }
+  .screen-glare { pointer-events: none; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05), transparent 18%, transparent 82%, rgba(255,255,255,0.03)); opacity: 0.65; }
+  .hero-title { font-size: clamp(3rem, 9vw, 6.5rem); line-height: 0.9; font-weight: 900; color: #f8fafc; text-transform: uppercase; letter-spacing: 0; text-shadow: 0 0 18px rgba(255,255,255,0.16); }
+  .hero-title span { color: #f59e0b; text-shadow: 0 0 22px rgba(245,158,11,0.55); }
+  .classified-tag { display: inline-block; border: 1px solid rgba(146, 64, 14, 0.75); background: rgba(69, 26, 3, 0.35); color: #f59e0b; border-radius: 0.35rem; padding: 0.35rem 0.7rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.28em; }
+  .mission-card { background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(51, 65, 85, 0.75); border-radius: 0.5rem; padding: 1.5rem; box-shadow: inset 0 0 24px rgba(0,0,0,0.7); text-align: left; }
+  .mission-card h2 { font-size: 0.95rem; color: #22d3ee; text-transform: uppercase; letter-spacing: 0.12em; border-bottom: 1px solid rgba(22, 78, 99, 0.6); padding-bottom: 0.65rem; margin-bottom: 1rem; }
+  .mission-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #22d3ee; margin-right: 0.7rem; box-shadow: 0 0 12px rgba(34,211,238,0.8); }
+  .landing-stat { background: rgba(0,0,0,0.38); border: 1px solid #1e293b; border-radius: 0.5rem; padding: 1rem; text-align: left; }
+  .landing-stat h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; }
+  .landing-stat p { font-size: 0.78rem; color: #64748b; }
+  .protocol-section { background: #020617; border: 1px solid #334155; border-radius: 0.5rem; padding: 1.25rem; }
+  .protocol-section h3 { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.5rem; border-bottom: 1px solid #334155; }
+  .protocol-section ul { list-style-position: inside; color: #94a3b8; font-size: 0.85rem; line-height: 1.8; margin-top: 0.75rem; }
+  .matrix-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; font-size: 0.7rem; color: #4ade80; text-align: center; text-transform: uppercase; letter-spacing: 0.08em; }
+  .matrix-cell { background: #052e16; border: 1px solid #14532d; border-radius: 0.4rem; padding: 0.75rem; }
+  @media (max-width: 720px) { .matrix-row { grid-template-columns: 1fr; } }
+
+  /* Leaderboard table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  thead th { text-align: left; padding: 0.5rem; color: #94a3b8; border-bottom: 1px solid #334155; font-weight: 600; }
+  tbody td { padding: 0.5rem; border-bottom: 1px solid #1e293b; }
+  tbody tr:hover { background: #1e293b; }
+
+  /* Option button */
+  .opt-btn { width: 100%; text-align: left; padding: 0.6rem 0.8rem; border-radius: 0.4rem;
+             background: #0f172a; border: 1px solid #334155; color: #e2e8f0; cursor: pointer;
+             font-family: inherit; font-size: 0.85rem; transition: all 0.15s; }
+  .opt-btn:hover { border-color: #0ea5e9; color: #22d3ee; }
+  .opt-btn.selected { border-color: #0ea5e9; background: #0c4a6e; color: #22d3ee; }
+
+  /* Splash specific */
+  #splash { background: radial-gradient(ellipse at center, #1e293b 0%, #0f172a 100%); min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem; }
+  .splash-image-wrap { position: relative; width: min(100%, 36rem); margin-bottom: 2rem; }
+  .splash-image-wrap::before { content: ""; position: absolute; inset: 8%; background: rgba(245, 158, 11, 0.18); filter: blur(70px); border-radius: 999px; }
+  .splash-image { position: relative; width: 100%; max-height: 22rem; object-fit: cover; border-radius: 0.75rem; border: 1px solid #1e293b; box-shadow: 0 0 48px rgba(0,0,0,0.8); display: block; }
+  .admin-corner { position: fixed; top: 0.75rem; right: 0.75rem; z-index: 50; width: 2rem; height: 2rem;
+                  border-radius: 999px; border: 1px solid #334155; background: rgba(15,23,42,0.55);
+                  color: #475569; cursor: pointer; font-size: 0.8rem; font-weight: 700; }
+  .admin-corner:hover { color: #94a3b8; border-color: #64748b; background: rgba(15,23,42,0.9); }
+  .glow { text-shadow: 0 0 20px rgba(34,211,238,0.5); }
+  @media (max-width: 640px) {
+    .terminal-panel { border-radius: 0.75rem; }
+    .mission-card { padding: 1rem; }
+    .classified-tag { letter-spacing: 0.16em; }
+  }
+</style>
+</head>
+<body>
+<button id="admin-corner-button" class="admin-corner" onclick="goto('admin-login')" aria-label="Admin console">⌘</button>
+
+<!-- ═══════════════════════════════════════════ SCREENS ═══════════════════════ -->
+
+<!-- SPLASH -->
+<div id="screen-splash">
+  <div id="splash">
+    <div class="splash-image-wrap">
+      <img class="splash-image" src="/static/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg" alt="Escape room neon sign" />
+    </div>
+    <h1 class="hero-title">Prompt <span>Wars</span></h1>
+    <div style="margin-top:2.5rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
+      <button class="btn btn-primary" onclick="goto('welcome')" style="font-size:1.1rem;padding:0.75rem 2rem;text-transform:uppercase;letter-spacing:0.12em;">Enter Facility</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN -->
+<div id="screen-admin-login" class="hidden">
+  <div class="container" style="max-width:480px;padding-top:4rem;">
+    <div class="card">
+      <h2 class="text-cyan">Operator Console</h2>
+      <div class="mt-3">
+        <label>Access Name</label>
+        <input id="admin-name-input" type="text" autocomplete="off" />
+      </div>
+      <div class="mt-3">
+        <label>Access Email</label>
+        <input id="admin-email-input" type="email" autocomplete="off" />
+      </div>
+      <div id="admin-login-error" class="text-red mt-2 hidden"></div>
+      <div style="display:flex;gap:0.75rem;margin-top:1rem;">
+        <button class="btn btn-primary" onclick="submitAdminLogin()">Login</button>
+        <button class="btn btn-outline" onclick="goto('splash')">Back</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN VIEW -->
+<div id="screen-admin-view" class="hidden">
+  <div class="container">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;padding-top:1rem;">
+      <span style="font-size:1.2rem;font-weight:700;color:#22d3ee;">Admin Panel</span>
+      <div style="display:flex;gap:0.5rem;">
+        <button class="btn btn-outline" onclick="setAdminTab('preview')" id="tab-preview">Preview</button>
+        <button class="btn btn-outline" onclick="setAdminTab('leaderboard')" id="tab-lb">Leaderboard</button>
+        <button class="btn btn-outline" onclick="downloadFullLeaderboard()">Export</button>
+        <button class="btn btn-red" onclick="goto('splash')">Exit</button>
+      </div>
+    </div>
+    <!-- Preview Tab -->
+    <div id="admin-preview-tab">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+          <label style="margin:0;">Round:</label>
+          <select id="admin-round-select" onchange="loadAdminRound()" style="width:auto;max-width:120px;">
+            <option value="1">Round 1</option>
+            <option value="2">Round 2</option>
+            <option value="3">Round 3</option>
+            <option value="4">Round 4</option>
+            <option value="5">Round 5</option>
+            <option value="6">Round 6 (Bonus)</option>
+          </select>
+          <button class="btn btn-outline" onclick="loadAdminRound()">Load</button>
+        </div>
+        <div id="admin-round-display"><p class="text-slate">Loading preview...</p></div>
+      </div>
+    </div>
+    <!-- Leaderboard Tab -->
+    <div id="admin-lb-tab" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <h3>All Players</h3>
+          <button class="btn btn-outline" onclick="loadAdminLeaderboard()">Refresh</button>
+        </div>
+        <div id="admin-lb-content"><p class="text-slate">Loading...</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WELCOME -->
+<div id="screen-welcome" class="hidden">
+  <div class="container" style="max-width:760px;padding-top:2.5rem;">
+    <div class="terminal-panel" style="border-radius:0.75rem;padding:2.5rem;text-align:center;">
+      <div class="screen-glare"></div>
+      <div style="position:relative;z-index:1;">
+        <div class="classified-tag mb-4">Classified Simulation</div>
+        <h1 class="hero-title" style="font-size:clamp(3rem,8vw,5.8rem);margin-bottom:0.75rem;">Prompt <span>Wars</span></h1>
+        <p style="font-size:0.9rem;text-transform:uppercase;letter-spacing:0.18em;margin-bottom:2rem;">The Ultimate Engineering Gauntlet</p>
+
+        <div class="mission-card">
+          <h2><span class="mission-dot"></span>Mission Briefing</h2>
+          <p style="margin-bottom:1rem;"><strong style="color:#e2e8f0;">Prompt Wars</strong> is a high-stress simulation designed to test your ability to command and manipulate AI systems using raw text constraints.</p>
+          <p style="margin-bottom:1.25rem;">You will be locked into <strong style="color:#e2e8f0;">5 sequential containment sectors</strong>. To progress, you must decipher the required logic and generate the exact target code.</p>
+          <div style="background:rgba(69,26,3,0.35);border:1px solid rgba(146,64,14,0.7);border-radius:0.45rem;padding:1rem;">
+            <p class="text-amber" style="font-size:0.85rem;"><strong style="display:block;margin-bottom:0.3rem;">WARNING: HIDDEN DIRECTIVE</strong>Operatives who clear all 5 sectors before life support failure will unlock the classified.</p>
+          </div>
+        </div>
+
+        <div class="grid-2 mt-4">
+          <div class="landing-stat">
+            <h3 class="text-green">🎯 Primary Objective</h3>
+            <p>Execute all overrides with maximum precision and speed before the master countdown hits zero.</p>
+          </div>
+          <div class="landing-stat">
+            <h3 class="text-purple">🏆 Final Outcome</h3>
+            <p>Your neural efficiency will be recorded on the Global Operative Registry.</p>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.75rem;padding-top:2rem;margin-top:1.5rem;border-top:1px solid rgba(51,65,85,0.6);">
+          <button class="btn btn-primary" onclick="goto('instructions')" style="font-size:1rem;padding:0.85rem 2.5rem;text-transform:uppercase;letter-spacing:0.14em;">Access Protocols</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INSTRUCTIONS -->
+<div id="screen-instructions" class="hidden">
+  <div class="container" style="max-width:980px;padding-top:2rem;">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-4" style="border-bottom:1px solid #334155;padding-bottom:1rem;">
+      <div>
+        <h2 class="text-amber">⚠️ Operation Parameters</h2>
+        <p style="font-size:0.85rem;">Review simulation rules before initializing terminal uplink.</p>
+      </div>
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+        <button class="btn btn-outline" onclick="goto('welcome')">[ Abort & Return ]</button>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="grid-2">
+        <section class="protocol-section" style="border-color:#7f1d1d;">
+          <h3 class="text-red">⏱️ Life Support Timer</h3>
+          <ul>
+            <li>Facility allows <strong style="color:#e2e8f0;">20 minutes total</strong> for all sectors.</li>
+            <li>Timer activates upon terminal initialization.</li>
+            <li>Countdown <strong class="text-red">cannot be paused</strong>.</li>
+            <li>Depletion results in immediate simulation failure.</li>
+          </ul>
+        </section>
+
+        <section class="protocol-section" style="border-color:#78350f;">
+          <h3 class="text-amber">🔁 Security Lockouts</h3>
+          <ul>
+            <li>Rounds 1-3 have <strong style="color:#e2e8f0;">unrestricted attempts</strong> within the master timer.</li>
+            <li>Round 4 allows <strong style="color:#e2e8f0;">3 attempts</strong>, round 5 allows <strong style="color:#e2e8f0;">2 attempts</strong>, and the bonus round allows <strong style="color:#e2e8f0;">1 submission</strong>.</li>
+            <li>Exhausting the capped rounds ends the run immediately.</li>
+          </ul>
+        </section>
+
+        <section class="protocol-section" style="border-color:#581c87;">
+          <h3 class="text-purple">🚫 Anti-Cheat Protocols</h3>
+          <ul>
+            <li>Focus loss, including tab switching, is <strong class="text-purple">strictly prohibited</strong>.</li>
+            <li>Violations deduct <strong style="color:#e2e8f0;">15 seconds</strong> from life support.</li>
+            <li>Copy/Paste functions are disabled on standard terminals.</li>
+            <li><strong style="color:#e2e8f0;">3 violations</strong> results in disqualification.</li>
+          </ul>
+        </section>
+
+        <section class="protocol-section" style="border-color:#164e63;">
+          <h3 class="text-cyan">🔒 Persistence Rules</h3>
+          <ul>
+            <li>Enter your <strong style="color:#e2e8f0;">real full name</strong> and approved <strong style="color:#e2e8f0;">@calfus.com</strong> email to unlock the terminal.</li>
+            <li><strong style="color:#e2e8f0;">One attempt</strong> per operative identity.</li>
+            <li>Terminal reboots and refreshes will <strong class="text-cyan">not</strong> reset the timer.</li>
+            <li>Connections resume from point of failure.</li>
+          </ul>
+        </section>
+      </div>
+
+      <hr class="divider" />
+
+      <section class="protocol-section" style="border-color:#14532d;background:#03140a;">
+        <h3 class="text-green">🏆 Evaluation Matrix Ranking Order</h3>
+        <div class="matrix-row mt-3">
+          <div class="matrix-cell">1. Rounds Reached</div>
+          <div class="matrix-cell">2. Accuracy + Speed Composite</div>
+          <div class="matrix-cell">3. Fewer Attempts / Round</div>
+          <div class="matrix-cell">4. Deterministic Tie-Break</div>
+        </div>
+      </section>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:1rem;margin-top:1.25rem;">
+      <p class="text-amber" style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.08em;">Ensure stable uplink before proceeding.</p>
+      <button class="btn btn-green" onclick="goto('register')" style="font-size:1.1rem;padding:0.75rem 2.5rem;text-transform:uppercase;">Accept Terms</button>
+    </div>
+  </div>
+</div>
+
+<!-- REGISTER -->
+<div id="screen-register" class="hidden">
+  <div class="container" style="max-width:480px;padding-top:4rem;">
+    <div class="card">
+      <h2 class="text-cyan">Enter the Escape Room</h2>
+      <p style="margin-bottom:1rem;">Identify yourself to begin.</p>
+      <div>
+        <label>Full Name</label>
+        <input id="reg-name" type="text" placeholder="Your full name" />
+      </div>
+      <div class="mt-3">
+        <label>Company Email</label>
+        <input id="reg-email" type="email" placeholder="you@calfus.com" />
+      </div>
+      <div id="reg-error" class="text-red mt-2 hidden"></div>
+      <div id="reg-msg" class="text-amber mt-2 hidden"></div>
+      <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
+        <button class="btn btn-green" id="reg-btn" onclick="submitRegister()">Begin</button>
+        <button class="btn btn-outline" onclick="goto('welcome')">Back</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PLAYING -->
+<div id="screen-playing" class="hidden">
+  <div class="container">
+    <!-- HUD -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;border-bottom:1px solid #334155;margin-bottom:1rem;">
+      <div>
+        <span class="badge badge-cyan" id="hud-round-badge">Round 1</span>
+        <span style="margin-left:0.75rem;color:#94a3b8;font-size:0.85rem;" id="hud-round-name">Signal Scan</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <div>
+          <span id="timer-display" class="timer timer-green">20:00</span>
+        </div>
+        <div style="display:flex;gap:2px;" id="violation-dots"></div>
+      </div>
+    </div>
+
+    <!-- Round Content -->
+    <div id="round-content"></div>
+
+    <!-- Last Result -->
+    <div id="last-result-panel" class="card hidden" style="margin-top:1rem;border-color:#0ea5e9;">
+      <div id="last-result-content"></div>
+    </div>
+
+    <!-- Submit Area -->
+    <div id="submit-area" class="card" style="margin-top:1rem;"></div>
+  </div>
+</div>
+
+<!-- BONUS ROUND -->
+<div id="screen-bonus" class="hidden">
+  <div class="container">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;border-bottom:1px solid #334155;margin-bottom:1rem;">
+      <div>
+        <span class="badge badge-purple">Bonus Round</span>
+        <span style="margin-left:0.75rem;color:#c084fc;font-size:0.85rem;">Prompt Forge</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <span id="bonus-timer" class="timer timer-amber">20:00</span>
+        <div style="display:flex;gap:2px;" id="bonus-violation-dots"></div>
+      </div>
+    </div>
+    <div id="bonus-content"></div>
+    <div id="bonus-submit-area" class="card" style="margin-top:1rem;"></div>
+  </div>
+</div>
+
+<!-- FINISHED -->
+<div id="screen-finished" class="hidden">
+  <div class="container" style="max-width:700px;padding-top:2rem;">
+    <div class="card text-center">
+      <div id="finish-icon" style="font-size:3rem;"></div>
+      <h2 id="finish-title" style="margin-top:0.5rem;"></h2>
+      <p id="finish-msg" class="mt-2"></p>
+      <div id="finish-stats" class="mt-3"></div>
+    </div>
+    <div class="card mt-3">
+      <h3 class="text-cyan mb-3">Leaderboard</h3>
+      <div id="leaderboard-content"><p class="text-slate">Loading...</p></div>
+    </div>
+    <div style="text-align:center;margin-top:1rem;">
+      <button class="btn btn-outline" onclick="resetGame()">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ SCRIPT ═══════════════════════ -->
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const STATE_KEY = 'promptWars_state';
+let state = {
+  phase: 'splash',
+  player: { name: '', email: '' },
+  sessionId: null,
+  roundNumber: 1,
+  timeLeftSec: 0,
+  attemptsRemaining: -1,
+  violations: 0,
+  stats: { roundsCompleted: 0, accuracies: [], bonusCompleted: false, lastFinalScore: null, highScoreBonus: false },
+  promptInput: '',
+  metaPromptInput: '',
+  generatedPrompt: null,
+  dropdownSelections: {},
+  currentRound: null,
+  adminToken: null,
+  adminTab: 'preview',
+};
+
+const ROUND_TYPE_NAMES = {
+  CLASSIFY: 'Signal Scan', IMPROVE: 'Prompt Refinery', REVERSE: 'Backtrace',
+  OPTIMIZE: 'Compression Chamber', STRUCTURED: 'Protocol Stack', BONUS: 'Prompt Forge',
+};
+const ROUND_TYPE_LABELS = {
+  1: 'Signal Scan', 2: 'Prompt Refinery', 3: 'Backtrace',
+  4: 'Compression Chamber', 5: 'Protocol Stack', 6: 'Prompt Forge',
+};
+const GAME_STATUS_CONFIG = {
+  IN_PROGRESS: { label: 'In Progress', cls: 'text-slate' },
+  COMPLETED: { label: 'Completed', cls: 'text-green' },
+  COMPLETED_WITH_BONUS: { label: 'Completed + Bonus', cls: 'text-emerald' },
+  FAILED: { label: 'Failed', cls: 'text-red' },
+  TIME_OVER: { label: 'Time Out', cls: 'text-amber' },
+  DISQUALIFIED: { label: 'Disqualified', cls: 'text-red' },
+};
+
+let timerInterval = null;
+let pollInterval = null;
+let allowTimeUp = false;
+
+// ── Routing ───────────────────────────────────────────────────────────────────
+function goto(phase) {
+  state.phase = phase;
+  saveState();
+  render();
+}
+
+function render() {
+  const screens = ['splash','admin-login','admin-view','welcome','instructions','register','playing','bonus','finished'];
+  screens.forEach(s => {
+    const el = document.getElementById(`screen-${s}`);
+    if (el) el.classList.toggle('hidden', state.phase !== s);
+  });
+  updateAdminCorner();
+  if (state.phase === 'playing') renderPlayingPhase();
+  if (state.phase === 'bonus') renderBonusPhase();
+  if (state.phase === 'finished') renderFinishedPhase();
+  if (state.phase === 'admin-view') applyAdminTab();
+  startOrStopTimer();
+  startOrStopPoll();
+}
+
+function updateAdminCorner() {
+  const el = document.getElementById('admin-corner-button');
+  if (!el) return;
+  const visible = ['splash', 'welcome', 'instructions', 'register'].includes(state.phase);
+  el.classList.toggle('hidden', !visible);
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+function saveState() {
+  if (state.phase === 'admin-login' || state.phase === 'admin-view') return;
+  const saved = { ...state };
+  delete saved.adminToken;
+  localStorage.setItem(STATE_KEY, JSON.stringify(saved));
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    Object.assign(state, s);
+    if ((state.phase === 'playing' || state.phase === 'bonus') && state.sessionId) {
+      refreshRound(state.sessionId).catch(() => { state.phase = 'welcome'; saveState(); render(); });
+    }
+  } catch {}
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────────
+function startOrStopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  if (state.phase === 'playing' || state.phase === 'bonus') {
+    allowTimeUp = true;
+    timerInterval = setInterval(() => {
+      state.timeLeftSec = Math.max(0, state.timeLeftSec - 1);
+      updateTimerDisplay();
+      if (state.timeLeftSec === 0 && allowTimeUp) { allowTimeUp = false; finishGame('Time is up.'); }
+    }, 1000);
+  } else {
+    allowTimeUp = false;
+  }
+}
+
+function updateTimerDisplay() {
+  const m = Math.floor(state.timeLeftSec / 60);
+  const s = state.timeLeftSec % 60;
+  const txt = `${m}:${String(s).padStart(2,'0')}`;
+  const cls = state.timeLeftSec > 120 ? 'timer-green' : state.timeLeftSec > 30 ? 'timer-amber' : 'timer-red';
+  ['timer-display','bonus-timer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = txt; el.className = `timer ${cls}`; }
+  });
+}
+
+// ── Poll ──────────────────────────────────────────────────────────────────────
+function startOrStopPoll() {
+  clearInterval(pollInterval);
+  pollInterval = null;
+  if ((state.phase === 'playing' || state.phase === 'bonus') && state.sessionId) {
+    pollInterval = setInterval(() => {
+      if (!document.hidden) refreshRound(state.sessionId).catch(() => {});
+    }, 15000);
+  }
+}
+
+// ── Visibility / anti-cheat ───────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && (state.phase === 'playing' || state.phase === 'bonus') && state.sessionId) {
+    reportViolation('TAB_SWITCH');
+  } else if (!document.hidden && (state.phase === 'playing' || state.phase === 'bonus')) {
+    refreshRound(state.sessionId).catch(() => {});
+  }
+});
+
+document.addEventListener('copy', () => {
+  if ((state.phase === 'playing' || state.phase === 'bonus') && state.sessionId) reportViolation('COPY_PASTE');
+});
+document.addEventListener('paste', () => {
+  if ((state.phase === 'playing' || state.phase === 'bonus') && state.sessionId) reportViolation('COPY_PASTE');
+});
+
+async function reportViolation(type) {
+  if (!state.sessionId) return;
+  try {
+    const res = await api('/api/penalty', { sessionId: state.sessionId, violationType: type });
+    if (res.status === 'DISQUALIFIED') {
+      alert('DISQUALIFIED: 3 violations reached. You have been removed from the game.');
+      finishGame('Disqualified due to violations.');
+      return;
+    }
+    if (typeof res.remainingTime === 'number') state.timeLeftSec = Math.max(0, Math.ceil(res.remainingTime / 1000));
+    state.violations = res.violations ?? 0;
+    renderViolationDots();
+    const label = type === 'TAB_SWITCH' ? 'Tab switching' : 'Copy/Paste';
+    alert(`⚠️ CRITICAL SECURITY OVERRIDE DETECTED.\n\n${label} is strictly prohibited. 15 seconds deducted from life support.\n\nViolations remaining before disqualification: ${res.violationsRemaining}`);
+  } catch {
+    state.timeLeftSec = Math.max(0, state.timeLeftSec - 15);
+  }
+}
+
+function renderViolationDots() {
+  ['violation-dots','bonus-violation-dots'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = [0,1,2].map(i =>
+      `<span class="dot ${i < state.violations ? 'dot-filled' : 'dot-empty'}"></span>`
+    ).join('');
+  });
+}
+
+// ── API helper ────────────────────────────────────────────────────────────────
+async function api(path, body, method = 'POST') {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+async function apiGet(path, token) {
+  const opts = { method: 'GET', headers: {} };
+  if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+async function loginAdminWithCredentials(name, email, errEl, showErrors = true) {
+  try {
+    const res = await api('/api/admin/login', { name, email });
+    if (res.token) {
+      state.adminToken = res.token;
+      goto('admin-view');
+      loadAdminRound();
+      return true;
+    }
+    if (showErrors && errEl) {
+      errEl.textContent = res.error || 'Invalid credentials.';
+      errEl.classList.remove('hidden');
+    }
+  } catch {
+    if (showErrors && errEl) {
+      errEl.textContent = 'Network error.';
+      errEl.classList.remove('hidden');
+    }
+  }
+  return false;
+}
+
+async function submitAdminLogin() {
+  const name = document.getElementById('admin-name-input').value.trim();
+  const email = document.getElementById('admin-email-input').value.trim();
+  const errEl = document.getElementById('admin-login-error');
+  errEl.classList.add('hidden');
+  await loginAdminWithCredentials(name, email, errEl, true);
+}
+
+function setAdminTab(tab) {
+  state.adminTab = tab;
+  applyAdminTab();
+  if (tab === 'leaderboard') loadAdminLeaderboard();
+}
+
+function applyAdminTab() {
+  const preview = document.getElementById('admin-preview-tab');
+  const lb = document.getElementById('admin-lb-tab');
+  const tPreview = document.getElementById('tab-preview');
+  const tLb = document.getElementById('tab-lb');
+  if (!preview) return;
+  if (state.adminTab === 'leaderboard') {
+    preview.classList.add('hidden'); lb.classList.remove('hidden');
+    tPreview.className = 'btn btn-outline'; tLb.className = 'btn btn-primary';
+  } else {
+    preview.classList.remove('hidden'); lb.classList.add('hidden');
+    tPreview.className = 'btn btn-primary'; tLb.className = 'btn btn-outline';
+    const display = document.getElementById('admin-round-display');
+    if (state.adminToken && display && /Loading preview|^\s*$/.test(display.textContent || '')) {
+      loadAdminRound();
+    }
+  }
+}
+
+async function loadAdminRound() {
+  const sel = document.getElementById('admin-round-select');
+  const roundNumber = parseInt(sel?.value || '1');
+  const display = document.getElementById('admin-round-display');
+  if (!display) return;
+  display.innerHTML = '<div class="spinner"></div>';
+  try {
+    const res = await fetch('/api/get-round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.adminToken}` },
+      body: JSON.stringify({ roundNumber }),
+    });
+    const data = await res.json();
+    if (data.error) { display.innerHTML = `<p class="text-red">${data.error}</p>`; return; }
+    display.innerHTML = buildRoundHTML(data, true);
+  } catch { display.innerHTML = '<p class="text-red">Failed to load round.</p>'; }
+}
+
+async function loadAdminLeaderboard() {
+  const el = document.getElementById('admin-lb-content');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await apiGet('/api/admin/leaderboard', state.adminToken);
+    if (!data.players || data.players.length === 0) { el.innerHTML = '<p class="text-slate">No players yet.</p>'; return; }
+    el.innerHTML = buildLeaderboardTable(data.players, true);
+  } catch { el.innerHTML = '<p class="text-red">Failed to load.</p>'; }
+}
+
+async function downloadFullLeaderboard() {
+  if (!state.adminToken) { alert('Admin session expired.'); goto('admin-login'); return; }
+  try {
+    const data = await apiGet('/api/admin/export-leaderboard', state.adminToken);
+    if (!data.players) { alert(data.error || 'Failed to export leaderboard.'); return; }
+    let rows = 'Rank,Name,Email,Rounds Played,Time Taken (s),Avg Accuracy (%),Total Attempts,Status\n';
+    data.players.forEach((p, idx) => {
+      const timeSec = normalizeTimeSec(p.timeTaken);
+      const status = getStatusLabel(p.gameStatus);
+      rows += `${idx + 1},"${csvCell(p.name)}","${csvCell(p.email || '')}",${p.roundsPlayed},${timeSec},${Math.round((p.avgAccuracy || 0) * 1000) / 10},${p.attemptsTaken},"${csvCell(status)}"\n`;
+      (p.rounds || []).sort((a, b) => a.round - b.round).forEach((r) => {
+        const promptStr = typeof r.prompt === 'string' ? r.prompt : JSON.stringify(r.prompt);
+        rows += `,,Round ${r.round}: ${csvCell(ROUND_TYPE_LABELS[r.round] || '')},Attempts: ${r.attempts},Score: ${Math.round((r.score || 0) * 1000) / 10}%,"${csvCell(promptStr)}","${csvCell(r.output || '')}"\n`;
+      });
+    });
+    downloadTextFile('prompt-wars-leaderboard.csv', rows, 'text/csv');
+  } catch {
+    alert('Network error exporting leaderboard.');
+  }
+}
+
+async function downloadPlayerResponses(email) {
+  if (!state.adminToken) { alert('Admin session expired.'); goto('admin-login'); return; }
+  try {
+    const data = await apiGet(`/api/admin/player-responses?email=${encodeURIComponent(email)}`, state.adminToken);
+    if (!data.player) { alert(data.error || 'Failed to fetch player responses.'); return; }
+    downloadPlayerReport(data.player);
+  } catch {
+    alert('Network error fetching player responses.');
+  }
+}
+
+function downloadPlayerReport(p) {
+  const statusLabel = getStatusLabel(p.gameStatus);
+  const timeTakenSec = normalizeTimeSec(p.timeTaken);
+  const sortedRounds = [...(p.rounds || [])].sort((a, b) => a.round - b.round);
+  const roundsHtml = sortedRounds.map((r) => {
+    const promptText = typeof r.prompt === 'string' ? r.prompt : JSON.stringify(r.prompt, null, 2);
+    return `
+      <section style="margin-bottom:24px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;">
+        <h3 style="margin:0 0 8px;color:#0e7490;">Round ${r.round}: ${escHtml(ROUND_TYPE_LABELS[r.round] || '')}</h3>
+        <p style="margin:0 0 12px;color:#64748b;font-size:12px;">Attempts: ${r.attempts} | Score: ${Math.round((r.score || 0) * 1000) / 10}%</p>
+        <h4 style="margin:0 0 6px;color:#334155;">Submission</h4>
+        <pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;">${escHtml(promptText || '')}</pre>
+        <h4 style="margin:14px 0 6px;color:#334155;">AI Output</h4>
+        <pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;">${escHtml(r.output || '')}</pre>
+      </section>`;
+  }).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8" />
+    <title>Prompt Wars - Response Report</title>
+    <style>body{font-family:Arial,sans-serif;color:#0f172a;max-width:960px;margin:0 auto;padding:32px;}pre{font-family:Menlo,Consolas,monospace;font-size:12px;}@media print{body{padding:16px;}}</style>
+  </head><body>
+    <div style="text-align:center;margin-bottom:32px;">
+      <h1 style="color:#0891b2;margin:0 0 4px;font-size:24px;">Prompt Wars - Response Report</h1>
+      <p style="color:#64748b;margin:0;font-size:13px;">Player Submission Details</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;padding:20px;background:#f1f5f9;border-radius:8px;border:1px solid #e2e8f0;">
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Name</span><br/><strong>${escHtml(p.name || '')}</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Email</span><br/><strong>${escHtml(p.email || '')}</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Rounds Played</span><br/><strong>${p.roundsPlayed}</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Time Taken</span><br/><strong>${Math.floor(timeTakenSec / 60)}m ${timeTakenSec % 60}s</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Avg Accuracy</span><br/><strong>${Math.round((p.avgAccuracy || 0) * 1000) / 10}%</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Total Attempts</span><br/><strong>${p.attemptsTaken}</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Status</span><br/><strong>${escHtml(statusLabel)}</strong></div>
+      <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Completed At</span><br/><strong>${p.completedAt ? new Date(p.completedAt).toLocaleString() : 'N/A'}</strong></div>
+    </div>
+    <h2 style="color:#0891b2;font-size:16px;margin-bottom:16px;border-bottom:2px solid #e2e8f0;padding-bottom:8px;">Round-by-Round Responses</h2>
+    ${sortedRounds.length > 0 ? roundsHtml : '<p style="color:#94a3b8;text-align:center;padding:24px;">No round data recorded.</p>'}
+    <p style="color:#94a3b8;text-align:center;font-size:11px;margin-top:32px;">Generated on ${new Date().toLocaleString()}</p>
+  </body></html>`;
+
+  const safeBaseName = safeFileName(p.email || p.name || 'player-report');
+  downloadTextFile(`${safeBaseName}-prompt-wars-response-report.html`, html, 'text/html');
+}
+
+// ── Register ──────────────────────────────────────────────────────────────────
+async function submitRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const errEl = document.getElementById('reg-error');
+  const msgEl = document.getElementById('reg-msg');
+  const btn = document.getElementById('reg-btn');
+  errEl.classList.add('hidden');
+  msgEl.classList.add('hidden');
+  if (!name || !email) { errEl.textContent = 'Please enter your name and email.'; errEl.classList.remove('hidden'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>&nbsp;Starting...';
+  try {
+    const res = await api('/api/start-game', { name, email });
+    if (res.status === 'ALREADY_PLAYED') {
+      msgEl.textContent = res.message || 'You have already completed the game.';
+      msgEl.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Begin';
+      return;
+    }
+    if (res.status === 'NEW_GAME' || res.status === 'RESUME') {
+      state.player = { name, email };
+      state.sessionId = res.sessionId;
+      state.timeLeftSec = Math.max(0, Math.ceil((res.remainingTime ?? res.timeLimit) / 1000));
+      await refreshRound(res.sessionId);
+    } else if (res.error) {
+      errEl.textContent = res.error;
+      errEl.classList.remove('hidden');
+    }
+  } catch { errEl.textContent = 'Network error. Please try again.'; errEl.classList.remove('hidden'); }
+  btn.disabled = false; btn.textContent = 'Begin';
+}
+
+// ── Refresh round from server ─────────────────────────────────────────────────
+async function refreshRound(sid) {
+  const data = await api('/api/get-round', { sessionId: sid });
+  if (data.status === 'GAME_OVER') {
+    const msg = data.reason === 'TIME_UP' ? 'Time is up.' : data.reason === 'ATTEMPTS_EXHAUSTED' ? 'No attempts remaining.' : 'Game over.';
+    finishGame(msg); return;
+  }
+  if (data.status === 'DISQUALIFIED') { finishGame('Disqualified.'); return; }
+  if (data.status === 'GAME_COMPLETED') { state.stats.bonusCompleted = Boolean(data.bonusUnlocked); finishGame(''); return; }
+  if (data.status === 'ACTIVE') {
+    applyRoundPayload(data);
+    const isBonus = data.roundType === 'BONUS' || (data.roundNumber ?? 1) > 5;
+    goto(isBonus ? 'bonus' : 'playing');
+    return;
+  }
+  throw new Error(data.error || `Unexpected status: ${data.status}`);
+}
+
+function applyRoundPayload(data) {
+  if (typeof data.roundNumber === 'number') state.roundNumber = data.roundNumber;
+  if (typeof data.remainingTime === 'number') state.timeLeftSec = Math.max(0, Math.ceil(data.remainingTime / 1000));
+  const max = data.maxAttemptsThisRound ?? -1;
+  const used = data.attemptsThisRound ?? 0;
+  state.attemptsRemaining = max < 0 ? -1 : Math.max(0, max - used);
+  state.currentRound = {
+    type: data.roundType, instruction: data.instruction, originalPrompt: data.originalPrompt,
+    input: data.input, referenceExample: data.referenceExample, expectedOutput: data.expectedOutput,
+    constraints: data.constraints, promptParts: data.promptParts,
+  };
+}
+
+// ── Render: Playing Phase ─────────────────────────────────────────────────────
+function renderPlayingPhase() {
+  const r = state.currentRound;
+  if (!r) return;
+  updateTimerDisplay();
+  renderViolationDots();
+
+  const name = ROUND_TYPE_NAMES[r.type] || r.type;
+  document.getElementById('hud-round-badge').textContent = `Round ${state.roundNumber}`;
+  document.getElementById('hud-round-name').textContent = name;
+
+  const content = document.getElementById('round-content');
+  content.innerHTML = buildRoundHTML(r, false);
+
+  renderSubmitArea();
+  hiddenLastResult();
+}
+
+function buildRoundHTML(r, isAdmin) {
+  let html = '';
+  const roundType = r.roundType || r.type;
+  const typeName = ROUND_TYPE_NAMES[roundType] || roundType || '';
+  if (isAdmin) html += `<div class="flex items-center gap-2 mb-3"><span class="badge badge-cyan">Round ${r.roundNumber}</span><span class="text-cyan" style="font-weight:700;">${typeName}</span></div>`;
+
+  if (r.instruction) html += `<div class="card-dark mb-3"><label>Instruction</label><p style="color:#e2e8f0;font-size:0.9rem;margin-top:0.25rem;">${escHtml(r.instruction)}</p></div>`;
+  if (r.originalPrompt) html += `<div class="card-dark mb-3"><label>Original Prompt</label><pre style="color:#fbbf24;">${escHtml(r.originalPrompt)}</pre></div>`;
+  if (r.input && roundType !== 'OPTIMIZE') html += `<div class="card-dark mb-3" style="max-height:260px;overflow-y:auto;"><label>Input / Context</label><pre style="color:#94a3b8;font-size:0.8rem;">${escHtml(r.input)}</pre></div>`;
+  if (roundType === 'OPTIMIZE' && r.input) html += `<div class="card-dark mb-3"><label>Task Description</label><pre style="color:#94a3b8;">${escHtml(r.input)}</pre></div>`;
+  if (r.referenceExample) html += `<div class="card-dark mb-3"><label>Reference Example</label><pre style="color:#60a5fa;font-size:0.8rem;">${escHtml(r.referenceExample)}</pre></div>`;
+  if (r.expectedOutput) html += `<div class="card-dark mb-3"><label>Target Output</label><pre style="color:#34d399;font-size:0.8rem;">${escHtml(r.expectedOutput)}</pre></div>`;
+  if (r.constraints && typeof r.constraints === 'object' && Object.keys(r.constraints).length) {
+    const lines = formatConstraints(r.constraints);
+    html += `<div class="card-dark mb-3"><label>Constraints</label><ul style="margin-top:0.25rem;color:#94a3b8;font-size:0.8rem;list-style:none;">` + lines.map(l => `<li>• ${escHtml(l)}</li>`).join('') + `</ul></div>`;
+  }
+  if (r.promptParts && r.promptParts.length) {
+    html += isAdmin ? buildAdminClassifyHTML(r.promptParts) : buildClassifyHTML(r.promptParts);
+  }
+  if (roundType === 'OPTIMIZE') {
+    html += `<div class="card-dark mb-2"><label>Guidance</label><ul style="margin-top:0.25rem;color:#94a3b8;font-size:0.8rem;list-style:none;">
+      <li>• There is no single required analogy — choose any concept.</li>
+      <li>• Score comes from brevity + clarity of the analogy produced.</li>
+      <li>• Optimize for effectiveness, not for copying the reference.</li>
+    </ul></div>`;
+  }
+  return html;
+}
+
+function buildAdminClassifyHTML(parts) {
+  return `<div class="card-dark mb-3"><label>Prompt Blocks</label>` + parts.map((part, i) => `
+    <div style="margin-top:0.75rem;padding-left:0.75rem;border-left:2px solid #334155;">
+      <div class="text-amber" style="font-size:0.8rem;font-weight:700;margin-bottom:0.35rem;">Block ${i + 1}</div>
+      <pre style="color:#e2e8f0;font-size:0.8rem;margin-bottom:0.5rem;">${escHtml(part.text)}</pre>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+        <span class="badge badge-green">Answer: ${escHtml(part.answer)}</span>
+        <span class="text-slate" style="font-size:0.75rem;">Options: ${escHtml((part.options || []).join(', '))}</span>
+      </div>
+    </div>
+  `).join('') + `</div>`;
+}
+
+function buildClassifyHTML(parts) {
+  return parts.map((part, i) => `
+    <div class="card-dark mb-3">
+      <label>Block ${i+1}</label>
+      <pre style="color:#e2e8f0;font-size:0.8rem;margin:0.4rem 0;">${escHtml(part.text)}</pre>
+      <div style="margin-top:0.5rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;">
+        ${part.options.map(opt => `
+          <button class="opt-btn ${state.dropdownSelections[part.id] === opt ? 'selected' : ''}"
+                  onclick="selectOption('${escAttr(part.id)}','${escAttr(opt)}')">${escHtml(opt)}</button>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectOption(id, value) {
+  state.dropdownSelections[id] = value;
+  saveState();
+  renderPlayingPhase();
+}
+
+function renderSubmitArea() {
+  const r = state.currentRound;
+  const area = document.getElementById('submit-area');
+  if (!area || !r) return;
+  const attLine = state.attemptsRemaining >= 0 ? `<span class="text-slate" style="font-size:0.8rem;">Attempts remaining: ${state.attemptsRemaining}</span>` : '';
+
+  if (r.type === 'CLASSIFY') {
+    area.innerHTML = `
+      <div class="flex justify-between items-center mb-2">${attLine}<span></span></div>
+      <button class="btn btn-primary" id="submit-btn" onclick="submitAnswer()">Submit Answers</button>
+    `;
+  } else {
+    area.innerHTML = `
+      <div class="mb-2 flex justify-between items-center">
+        <label>Your Prompt</label>${attLine}
+      </div>
+      <textarea id="prompt-textarea" placeholder="Write your prompt here..." style="min-height:130px;"
+        oninput="state.promptInput=this.value;saveState();">${escHtml(state.promptInput)}</textarea>
+      <div style="margin-top:0.75rem;display:flex;gap:0.75rem;">
+        <button class="btn btn-primary" id="submit-btn" onclick="submitAnswer()">Submit</button>
+        <button class="btn btn-outline" onclick="state.promptInput='';saveState();document.getElementById('prompt-textarea').value='';">Clear</button>
+      </div>
+    `;
+  }
+}
+
+function hiddenLastResult() {
+  const panel = document.getElementById('last-result-panel');
+  if (panel) panel.classList.add('hidden');
+}
+
+function showLastResult(result) {
+  const panel = document.getElementById('last-result-panel');
+  const content = document.getElementById('last-result-content');
+  if (!panel || !content) return;
+  const score = Math.round((result.finalScore ?? 0) * 100);
+  const passed = result.status === 'ROUND_PASSED';
+  const cls = passed ? 'text-green' : 'text-red';
+  content.innerHTML = `
+    <div class="flex justify-between items-center">
+      <span class="${cls}" style="font-weight:700;">${passed ? '✓ Passed' : '✗ Failed'} — Score: ${score}%</span>
+      <span class="text-slate" style="font-size:0.8rem;">${result.attemptsThisRound ? `Attempt ${result.attemptsThisRound}` : ''}</span>
+    </div>
+    <div class="score-bar-wrap mt-1"><div class="score-bar-fill" style="width:${score}%;background:${passed?'#4ade80':'#f87171'};"></div></div>
+    ${result.output ? `<details style="margin-top:0.75rem;"><summary style="color:#94a3b8;cursor:pointer;font-size:0.8rem;">AI Output</summary><pre style="margin-top:0.5rem;color:#94a3b8;font-size:0.78rem;max-height:200px;overflow-y:auto;">${escHtml(result.output)}</pre></details>` : ''}
+  `;
+  panel.classList.remove('hidden');
+}
+
+// ── Submit answer ─────────────────────────────────────────────────────────────
+async function submitAnswer() {
+  const r = state.currentRound;
+  const btn = document.getElementById('submit-btn');
+  if (!r || !state.sessionId) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>&nbsp;Evaluating...'; }
+
+  let body = { sessionId: state.sessionId };
+  if (r.type === 'CLASSIFY') {
+    body.answers = { ...state.dropdownSelections };
+  } else {
+    const ta = document.getElementById('prompt-textarea');
+    const val = ta ? ta.value.trim() : state.promptInput.trim();
+    if (!val || val.length < 3) {
+      showAlert('Please write a prompt of at least 3 characters.', 'warn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
+      return;
+    }
+    body.prompt = val;
+    state.promptInput = val;
+  }
+
+  try {
+    const res = await api('/api/evaluate', body);
+    handleEvalResult(res);
+  } catch (e) {
+    showAlert('Network error. Please retry.', 'error');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
+}
+
+function handleEvalResult(res) {
+  if (res.status === 'GAME_OVER' || res.status === 'GAME_ALREADY_COMPLETED') { finishGame(''); return; }
+  if (res.status === 'DISQUALIFIED') { finishGame('Disqualified.'); return; }
+  if (res.status === 'EVALUATION_TIMEOUT' || res.status === 'EVALUATION_ERROR') {
+    showAlert(res.message || 'Evaluation failed. Please retry.', 'warn'); return;
+  }
+  if (res.status === 'NO_ATTEMPTS_LEFT') {
+    finishGame('No attempts remaining.'); return;
+  }
+  if (res.status === 'ROUND_PASSED') {
+    state.stats.roundsCompleted++;
+    state.stats.lastFinalScore = res.finalScore;
+    state.promptInput = '';
+    state.dropdownSelections = {};
+    setTimeout(() => {
+      if (res.bonusUnlocked || res.nextRound > 5) goto('bonus');
+    }, 100);
+    showLastResult({ ...res, status: 'ROUND_PASSED' });
+    refreshRound(state.sessionId).catch(() => {});
+    return;
+  }
+  if (res.status === 'GAME_COMPLETED') {
+    state.stats.bonusCompleted = Boolean(res.bonusUnlocked);
+    state.stats.highScoreBonus = Boolean(res.highScoreBonus);
+    state.stats.lastFinalScore = res.finalScore;
+    finishGame('');
+    return;
+  }
+  if (res.status === 'ROUND_FAILED') {
+    state.attemptsRemaining = res.attemptsRemaining ?? -1;
+    showLastResult({ ...res, status: 'ROUND_FAILED' });
+    renderSubmitArea();
+    return;
+  }
+  if (res.status === 'INVALID_SUBMISSION') { showAlert(res.message || 'Invalid submission.', 'warn'); return; }
+}
+
+// ── Bonus Phase ───────────────────────────────────────────────────────────────
+function renderBonusPhase() {
+  const r = state.currentRound;
+  if (!r) return;
+  updateTimerDisplay();
+  renderViolationDots();
+
+  const content = document.getElementById('bonus-content');
+  content.innerHTML = `
+    <div class="card">
+      <h3 class="text-purple mb-2">Meta-Prompting Challenge</h3>
+      ${r.instruction ? `<div class="card-dark mb-3"><label>Instruction</label><p style="color:#e2e8f0;font-size:0.9rem;margin-top:0.25rem;">${escHtml(r.instruction)}</p></div>` : ''}
+      ${r.input ? `<div class="card-dark mb-3" style="max-height:260px;overflow-y:auto;"><label>Scenario</label><pre style="color:#94a3b8;font-size:0.8rem;">${escHtml(r.input)}</pre></div>` : ''}
+      ${r.expectedOutput ? `<div class="card-dark mb-3"><label>Target Output Description</label><p style="color:#34d399;font-size:0.85rem;">${escHtml(r.expectedOutput)}</p></div>` : ''}
+    </div>
+  `;
+
+  const submitArea = document.getElementById('bonus-submit-area');
+  submitArea.innerHTML = `
+    <div class="mb-2"><label>Your Meta-Prompt</label></div>
+    <textarea id="meta-prompt-ta" placeholder="Write your meta-prompt here — describe what the final prompt must accomplish, its sections, tone, constraints..." style="min-height:160px;"
+      oninput="state.metaPromptInput=this.value;saveState();">${escHtml(state.metaPromptInput)}</textarea>
+    <div style="margin-top:0.75rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="bonus-submit-btn" onclick="submitBonusAnswer()">Submit Meta-Prompt</button>
+      <button class="btn btn-outline" id="preview-btn" onclick="previewMetaPrompt()">Preview Compiled Prompt</button>
+      <button class="btn btn-outline" onclick="state.metaPromptInput='';saveState();document.getElementById('meta-prompt-ta').value='';document.getElementById('preview-result').innerHTML='';">Clear</button>
+    </div>
+    ${state.generatedPrompt ? `<div class="card-dark mt-3"><label>Compiled Prompt Preview</label><pre style="color:#60a5fa;font-size:0.8rem;margin-top:0.25rem;">${escHtml(state.generatedPrompt)}</pre></div>` : ''}
+    <div id="preview-result" style="margin-top:0.5rem;"></div>
+    <div id="bonus-last-result" style="margin-top:0.75rem;"></div>
+  `;
+}
+
+async function previewMetaPrompt() {
+  const ta = document.getElementById('meta-prompt-ta');
+  const val = ta ? ta.value.trim() : state.metaPromptInput.trim();
+  if (!val || val.length < 3) { showAlert('Write at least 3 characters.', 'warn'); return; }
+  const btn = document.getElementById('preview-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>&nbsp;Compiling...';
+  try {
+    const res = await api('/api/compile-meta-prompt', { sessionId: state.sessionId, metaPrompt: val });
+    if (res.compiledPrompt) {
+      state.generatedPrompt = res.compiledPrompt;
+      saveState();
+      document.getElementById('preview-result').innerHTML = `<div class="card-dark"><label>Compiled Prompt</label><pre style="color:#60a5fa;font-size:0.8rem;margin-top:0.25rem;">${escHtml(res.compiledPrompt)}</pre></div>`;
+    } else {
+      document.getElementById('preview-result').innerHTML = `<p class="text-red">${escHtml(res.error || 'Failed to compile.')}</p>`;
+    }
+  } catch { document.getElementById('preview-result').innerHTML = '<p class="text-red">Network error.</p>'; }
+  btn.disabled = false; btn.innerHTML = 'Preview Compiled Prompt';
+}
+
+async function submitBonusAnswer() {
+  const ta = document.getElementById('meta-prompt-ta');
+  const val = ta ? ta.value.trim() : state.metaPromptInput.trim();
+  if (!val || val.length < 3) { showAlert('Write a meta-prompt of at least 3 characters.', 'warn'); return; }
+  const btn = document.getElementById('bonus-submit-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>&nbsp;Evaluating...';
+  try {
+    const res = await api('/api/evaluate', { sessionId: state.sessionId, metaPrompt: val });
+    const resDiv = document.getElementById('bonus-last-result');
+    if (res.status === 'GAME_COMPLETED' || res.status === 'ROUND_PASSED') {
+      state.stats.bonusCompleted = true;
+      state.stats.lastFinalScore = res.finalScore;
+      const score = Math.round((res.finalScore ?? 0) * 100);
+      if (resDiv) resDiv.innerHTML = `<div class="card-dark"><span class="text-emerald" style="font-weight:700;">✓ Bonus Complete — Score: ${score}%</span></div>`;
+      setTimeout(() => finishGame(''), 1800);
+    } else if (res.status === 'ROUND_FAILED' || res.status === 'NO_ATTEMPTS_LEFT') {
+      state.stats.lastFinalScore = res.finalScore;
+      const score = Math.round((res.finalScore ?? 0) * 100);
+      if (resDiv) resDiv.innerHTML = `<div class="card-dark"><span class="text-amber" style="font-weight:700;">Bonus score: ${score}%</span></div>`;
+      setTimeout(() => finishGame(''), 2000);
+    } else if (res.status === 'EVALUATION_TIMEOUT' || res.status === 'EVALUATION_ERROR') {
+      showAlert(res.message || 'Evaluation failed. Please retry.', 'warn');
+    } else if (res.error) {
+      showAlert(res.error, 'error');
+    } else { handleEvalResult(res); }
+  } catch { showAlert('Network error. Please retry.', 'error'); }
+  btn.disabled = false; btn.innerHTML = 'Submit Meta-Prompt';
+}
+
+// ── Finish game ───────────────────────────────────────────────────────────────
+function finishGame(note) {
+  clearInterval(timerInterval); clearInterval(pollInterval);
+  timerInterval = null; pollInterval = null; allowTimeUp = false;
+  state.phase = 'finished';
+  if (note) state.finishNote = note;
+  saveState();
+  render();
+  loadLeaderboard();
+}
+
+function renderFinishedPhase() {
+  const { stats } = state;
+  const iconEl = document.getElementById('finish-icon');
+  const titleEl = document.getElementById('finish-title');
+  const msgEl = document.getElementById('finish-msg');
+  const statsEl = document.getElementById('finish-stats');
+
+  if (state.finishNote === 'Disqualified due to violations.' || state.finishNote === 'Disqualified.') {
+    iconEl.textContent = '⛔';
+    titleEl.textContent = 'Disqualified';
+    titleEl.className = 'text-red';
+    msgEl.textContent = 'You were disqualified for rule violations.';
+  } else if (state.finishNote === 'Time is up.') {
+    iconEl.textContent = '⏰';
+    titleEl.textContent = 'Time\'s Up!';
+    titleEl.className = 'text-amber';
+    msgEl.textContent = `You completed ${stats.roundsCompleted} round(s) before time ran out.`;
+  } else if (state.finishNote === 'No attempts remaining.') {
+    iconEl.textContent = '💥';
+    titleEl.textContent = 'Attempts Exhausted';
+    titleEl.className = 'text-red';
+    msgEl.textContent = 'You ran out of attempts.';
+  } else if (stats.bonusCompleted) {
+    iconEl.textContent = '🏆';
+    titleEl.textContent = 'Outstanding — Bonus Complete!';
+    titleEl.className = 'text-emerald';
+    msgEl.textContent = 'You conquered all 5 rounds AND the bonus meta-prompting challenge!';
+  } else if (stats.roundsCompleted >= 5) {
+    iconEl.textContent = '🎉';
+    titleEl.textContent = 'Escape Successful!';
+    titleEl.className = 'text-green';
+    msgEl.textContent = 'All 5 rounds completed. Well done!';
+  } else {
+    iconEl.textContent = '🔒';
+    titleEl.textContent = 'Game Over';
+    titleEl.className = 'text-slate';
+    msgEl.textContent = state.finishNote || 'Better luck next time!';
+  }
+
+  statsEl.innerHTML = `
+    <div class="grid-3" style="margin-top:0.5rem;">
+      <div class="card-dark text-center"><div style="font-size:1.5rem;font-weight:700;color:#22d3ee;">${stats.roundsCompleted}</div><div class="text-slate" style="font-size:0.75rem;">Rounds</div></div>
+      <div class="card-dark text-center"><div style="font-size:1.5rem;font-weight:700;color:#4ade80;">${stats.lastFinalScore != null ? Math.round(stats.lastFinalScore*100) + '%' : '—'}</div><div class="text-slate" style="font-size:0.75rem;">Last Score</div></div>
+      <div class="card-dark text-center"><div style="font-size:1.5rem;font-weight:700;color:#fbbf24;">${state.violations}</div><div class="text-slate" style="font-size:0.75rem;">Violations</div></div>
+    </div>
+  `;
+}
+
+async function loadLeaderboard() {
+  const el = document.getElementById('leaderboard-content');
+  if (!el) return;
+  try {
+    const data = await apiGet('/api/leaderboard');
+    if (!data.leaderboard || data.leaderboard.length === 0) {
+      el.innerHTML = '<p class="text-slate">No players yet.</p>'; return;
+    }
+    el.innerHTML = buildLeaderboardTable(data.leaderboard, false);
+  } catch { el.innerHTML = '<p class="text-red">Failed to load leaderboard.</p>'; }
+}
+
+function buildLeaderboardTable(players, isAdmin) {
+  const rows = players.slice(0, 50).map((p, i) => {
+    const statusCfg = GAME_STATUS_CONFIG[p.gameStatus] || GAME_STATUS_CONFIG.IN_PROGRESS;
+    const timeSec = p.timeTakenSec ?? Math.round((p.completedAt && p.startedAt ? (p.completedAt - p.startedAt) / 1000 : 0));
+    const timeStr = timeSec > 0 ? `${Math.floor(timeSec/60)}m ${timeSec%60}s` : '—';
+    const acc = typeof p.averageScore === 'number' ? Math.round(p.averageScore * 100) + '%' : (p.avgAccuracy != null ? Math.round(p.avgAccuracy * 100) + '%' : '—');
+    const attempts = p.attemptsUsed ?? p.attemptsTaken ?? p.attempts ?? '—';
+    const email = p.email ? `<div class="text-slate" style="font-size:0.72rem;margin-top:0.15rem;">${escHtml(p.email)}</div>` : '';
+    return `<tr>
+      <td style="color:#94a3b8;">#${i+1}</td>
+      <td style="font-weight:600;">${escHtml(p.name || 'Unknown')}${isAdmin ? email : ''}</td>
+      <td class="text-cyan">${p.roundsPlayed ?? 0}</td>
+      <td>${acc}</td>
+      <td>${timeStr}</td>
+      ${isAdmin ? `<td>${attempts}</td><td class="${statusCfg.cls}" style="font-size:0.78rem;">${statusCfg.label}</td><td>${p.email ? `<button class="btn btn-outline" style="padding:0.3rem 0.6rem;font-size:0.75rem;" onclick="downloadPlayerResponses('${escAttr(p.email)}')">Download</button>` : '—'}</td>` : ''}
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>
+    <th>#</th><th>Name</th><th>Rounds</th><th>Accuracy</th><th>Time</th>
+    ${isAdmin ? '<th>Attempts</th><th>Status</th><th>Responses</th>' : ''}
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatConstraints(c) {
+  if (!c || typeof c !== 'object') return ['No specific constraints.'];
+  const parts = [];
+  if (typeof c.maxWords === 'number') parts.push(`Max Words: ${c.maxWords}`);
+  if (Array.isArray(c.requiredSections)) parts.push(`Required Sections: ${c.requiredSections.join(', ')}`);
+  if (c.requireSteps === true) parts.push('Must include step-by-step reasoning');
+  if (Array.isArray(c.mustInclude)) parts.push(`Must Include: ${c.mustInclude.join(', ')}`);
+  if (Array.isArray(c.mustExclude)) parts.push(`Must Exclude: ${c.mustExclude.join(', ')}`);
+  if (typeof c.requiredAccuracy === 'number') parts.push(`Required Accuracy: ${Math.round(c.requiredAccuracy * 100)}%`);
+  return parts.length ? parts : ['No specific constraints.'];
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/'/g,"\\'");
+}
+
+function csvCell(value) {
+  return String(value ?? '').replace(/"/g, '""');
+}
+
+function getStatusLabel(status) {
+  return (GAME_STATUS_CONFIG[status] || {}).label || status || '';
+}
+
+function normalizeTimeSec(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n > 10000 ? Math.round(n / 1000) : Math.round(n);
+}
+
+function safeFileName(value) {
+  return String(value || 'player').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'player';
+}
+
+function downloadTextFile(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function showAlert(msg, type='error') {
+  alert(msg);
+}
+
+function resetGame() {
+  clearInterval(timerInterval); clearInterval(pollInterval);
+  localStorage.removeItem(STATE_KEY);
+  Object.assign(state, {
+    phase: 'splash', player: { name: '', email: '' }, sessionId: null,
+    roundNumber: 1, timeLeftSec: 0, attemptsRemaining: -1, violations: 0,
+    stats: { roundsCompleted: 0, accuracies: [], bonusCompleted: false, lastFinalScore: null, highScoreBonus: false },
+    promptInput: '', metaPromptInput: '', generatedPrompt: null, dropdownSelections: {},
+    currentRound: null, finishNote: null,
+  });
+  render();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadState();
+render();
+</script>
+</body>
+</html>
