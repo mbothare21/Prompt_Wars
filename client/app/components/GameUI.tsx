@@ -985,12 +985,13 @@ export default function GameUI() {
     for (const r of sortedRounds) {
       const pct = Math.round(r.score * 100);
       const label = ROUND_TYPE_LABELS[r.round] ?? "Unknown";
-      const tip = tips?.[r.round] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
+      // Round 1 with a single attempt means the player got it right immediately — no tip
+      const tip = (r.round === 1 && r.attempts <= 1)
+        ? null
+        : (tips?.[r.round] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.");
       const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
-      const barColor = scoreColor;
-      const tipBg = pct >= 70 ? "#f0fdf4" : pct >= 50 ? "#fffbeb" : "#fef2f2";
-      const tipBorder = pct >= 70 ? "#bbf7d0" : pct >= 50 ? "#fde68a" : "#fecaca";
-      const tipLabelColor = pct >= 70 ? "#166534" : pct >= 50 ? "#92400e" : "#dc2626";
+      const tipBg = "#fffbeb";
+      const tipBorder = "#fcd34d";
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
@@ -999,12 +1000,6 @@ export default function GameUI() {
               <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
               <span>Attempts: <strong>${r.attempts}</strong></span>
             </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-            <div style="flex:1;background:#e2e8f0;border-radius:4px;height:6px;overflow:hidden;">
-              <div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div>
-            </div>
-            <span style="font-size:11px;color:${scoreColor};font-weight:700;width:32px;text-align:right;">${pct}%</span>
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Player Prompt / Response</div>
@@ -1015,9 +1010,11 @@ export default function GameUI() {
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
             <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${r.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>` : ""}
-          <div style="margin-top:4px;background:${tipBg};border:1px solid ${tipBorder};border-radius:6px;padding:8px 12px;font-size:12px;">
-            <strong style="color:${tipLabelColor};">Improvement Tip:</strong> <span style="color:#475569;">${tip}</span>
-          </div>
+          ${tip ? `
+          <div style="margin-top:8px;">
+            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tip</div>
+            <div style="background:${tipBg};border:1px solid ${tipBorder};border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${tip}</div>
+          </div>` : ""}
         </div>`;
     }
 
