@@ -957,7 +957,7 @@ export default function GameUI() {
     completedAt?: string;
   };
 
-  const downloadPlayerReport = (p: MongoPlayer) => {
+  const downloadPlayerReport = (p: MongoPlayer, tips?: Record<number, string>) => {
     const formatPrompt = (prompt: unknown): string => {
       if (typeof prompt === "string") return prompt;
       if (prompt && typeof prompt === "object") {
@@ -985,7 +985,7 @@ export default function GameUI() {
     for (const r of sortedRounds) {
       const pct = Math.round(r.score * 100);
       const label = ROUND_TYPE_LABELS[r.round] ?? "Unknown";
-      const tip = IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
+      const tip = tips?.[r.round] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
       const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
       const barColor = scoreColor;
       const tipBg = pct >= 70 ? "#f0fdf4" : pct >= 50 ? "#fffbeb" : "#fef2f2";
@@ -1070,12 +1070,12 @@ export default function GameUI() {
       const res = await fetch(`/api/admin/player-responses?email=${encodeURIComponent(email)}`, {
         headers: { Authorization: `Bearer ${currentAdminToken}` },
       });
-      const data = (await res.json()) as { error?: string; player?: MongoPlayer };
+      const data = (await res.json()) as { error?: string; player?: MongoPlayer; tips?: Record<number, string> };
       if (!res.ok || !data.player) {
         alert(data.error ?? "Failed to fetch player data");
         return;
       }
-      downloadPlayerReport(data.player);
+      downloadPlayerReport(data.player, data.tips);
     } catch {
       alert("Network error fetching player data");
     }
@@ -1086,12 +1086,12 @@ export default function GameUI() {
     setDownloadingMyReport(true);
     try {
       const res = await fetch(`/api/player-report?sessionId=${encodeURIComponent(sessionId)}`);
-      const data = (await res.json()) as { error?: string; player?: MongoPlayer };
+      const data = (await res.json()) as { error?: string; player?: MongoPlayer; tips?: Record<number, string> };
       if (!res.ok || !data.player) {
         alert(data.error ?? "Failed to fetch your report");
         return;
       }
-      downloadPlayerReport(data.player);
+      downloadPlayerReport(data.player, data.tips);
     } catch {
       alert("Network error fetching your report");
     } finally {

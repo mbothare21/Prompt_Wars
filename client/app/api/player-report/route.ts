@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/gameStore";
 import { toAdminPlayerExport, type RawAdminPlayerDoc } from "@/lib/adminPlayers";
+import { generateRoundTips } from "@/lib/roundTips";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
@@ -41,7 +42,9 @@ export async function GET(req: Request) {
       return Response.json({ error: "Player not found" }, { status: 404 });
     }
 
-    return Response.json({ player: toAdminPlayerExport(doc) });
+    const player = toAdminPlayerExport(doc);
+    const tips = await generateRoundTips(player.rounds);
+    return Response.json({ player, tips });
   } catch (e) {
     console.error("[player-report]", e);
     return Response.json({ error: "Failed to fetch player data" }, { status: 500 });
