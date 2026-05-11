@@ -198,6 +198,7 @@ export default function GameUI() {
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
   const [dropdownSelections, setDropdownSelections] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [downloadingMyReport, setDownloadingMyReport] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1051,6 +1052,24 @@ export default function GameUI() {
       downloadPlayerReport(data.player);
     } catch {
       alert("Network error fetching player data");
+    }
+  };
+
+  const downloadMyReport = async () => {
+    if (!sessionId) return;
+    setDownloadingMyReport(true);
+    try {
+      const res = await fetch(`/api/player-report?sessionId=${encodeURIComponent(sessionId)}`);
+      const data = (await res.json()) as { error?: string; player?: MongoPlayer };
+      if (!res.ok || !data.player) {
+        alert(data.error ?? "Failed to fetch your report");
+        return;
+      }
+      downloadPlayerReport(data.player);
+    } catch {
+      alert("Network error fetching your report");
+    } finally {
+      setDownloadingMyReport(false);
     }
   };
 
@@ -1950,6 +1969,65 @@ export default function GameUI() {
                 </div>
               </div>
 
+              {stats.accuracies.length > 0 && (
+                <div className="mt-6 border-t border-slate-800 pt-6">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-cyan-500 mb-4 flex items-center gap-2">
+                    <span className="bg-cyan-500/40 w-1.5 h-1.5 rounded-full inline-block"></span>
+                    Improvement Analysis
+                  </h3>
+                  <div className="space-y-2 mb-4">
+                    {stats.accuracies.map((score, idx) => {
+                      const roundNum = idx + 1;
+                      const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
+                      const pct = Math.round(score * 100);
+                      const barColor = pct >= 70 ? "bg-green-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
+                      const textColor = pct >= 70 ? "text-green-400" : pct >= 50 ? "text-amber-400" : "text-red-400";
+                      return (
+                        <div key={roundNum} className="flex items-center gap-3 text-xs font-mono">
+                          <span className="text-slate-600 w-4 text-right shrink-0">{roundNum}</span>
+                          <span className="text-slate-400 w-36 truncate shrink-0">{label}</span>
+                          <div className="flex-1 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div className={`${barColor} h-full rounded-full`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className={`${textColor} font-bold w-10 text-right shrink-0`}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const IMPROVEMENT_TIPS: Record<string, string> = {
+                      [ROUND_TYPE_NAMES.CLASSIFY]: "Focus on classification boundaries — avoid broad generalisations.",
+                      [ROUND_TYPE_NAMES.IMPROVE]: "Add explicit constraints and clear structure to guide the model.",
+                      [ROUND_TYPE_NAMES.REVERSE]: "Work backwards from the expected output to find key prompt patterns.",
+                      [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — strip all redundant words.",
+                      [ROUND_TYPE_NAMES.STRUCTURED]: "Follow every format requirement exactly as specified.",
+                      [ROUND_TYPE_NAMES.BONUS]: "Combine specificity, format, and constraints in one tight prompt.",
+                    };
+                    const focusAreas = stats.accuracies
+                      .map((score, idx) => ({ score, label: ROUND_TYPE_LABELS[idx + 1] ?? `Round ${idx + 1}` }))
+                      .filter(({ score }) => score < 0.6);
+                    if (focusAreas.length === 0) {
+                      return (
+                        <div className="text-xs font-mono text-green-600 bg-green-950/20 border border-green-900/30 rounded px-3 py-2">
+                          No weak areas — strong overall performance.
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="space-y-2">
+                        <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono">Focus Areas</div>
+                        {focusAreas.map(({ label }) => (
+                          <div key={label} className="text-xs font-mono bg-red-950/20 border border-red-900/30 rounded px-3 py-2">
+                            <span className="text-red-400 font-bold">{label}:</span>{" "}
+                            <span className="text-slate-400">{IMPROVEMENT_TIPS[label] ?? "Review the round instructions carefully."}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               <p className="mt-8 text-center text-[10px] text-slate-600 font-mono tracking-[0.2em] uppercase">
                 {"// Uplink severed. Log recorded. //"}
               </p>
@@ -2023,6 +2101,26 @@ export default function GameUI() {
               </div>
             );
           })()}
+
+          {/* Download My Report — outside the leaderboard panel */}
+          <div className="mt-6 flex justify-center">
+            <button
+              onClick={downloadMyReport}
+              disabled={downloadingMyReport || !sessionId}
+              className="font-mono text-xs uppercase tracking-widest px-6 py-3 border border-cyan-800 text-cyan-400 bg-cyan-950/20 hover:bg-cyan-900/30 hover:border-cyan-600 transition-all rounded disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {downloadingMyReport ? (
+                <>
+                  <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span className="text-cyan-600 text-sm">↓</span> Download My Report
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </div>
