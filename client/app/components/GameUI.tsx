@@ -971,27 +971,53 @@ export default function GameUI() {
     const timeTakenSec = p.timeTaken > 10000 ? Math.round(p.timeTaken / 1000) : p.timeTaken;
     const statusLabel = GAME_STATUS_CONFIG[p.gameStatus ?? ""]?.label ?? p.gameStatus ?? "Unknown";
 
+    const IMPROVEMENT_TIPS_HTML: Record<string, string> = {
+      [ROUND_TYPE_NAMES.CLASSIFY]: "Focus on specific classification boundaries — avoid over-generalising labels.",
+      [ROUND_TYPE_NAMES.IMPROVE]: "Add explicit constraints and clear structure to guide the model more precisely.",
+      [ROUND_TYPE_NAMES.REVERSE]: "Work backwards from the expected output to identify the key prompt patterns.",
+      [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — strip every redundant word or modifier.",
+      [ROUND_TYPE_NAMES.STRUCTURED]: "Follow every format requirement exactly as specified — no extra sections.",
+      [ROUND_TYPE_NAMES.BONUS]: "Combine specificity, strict format, and constraints into one tight prompt.",
+    };
+
     let roundsHtml = "";
     const sortedRounds = [...(p.rounds || [])].sort((a, b) => a.round - b.round);
     for (const r of sortedRounds) {
+      const pct = Math.round(r.score * 100);
+      const label = ROUND_TYPE_LABELS[r.round] ?? "Unknown";
+      const tip = IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
+      const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+      const barColor = scoreColor;
+      const tipBg = pct >= 70 ? "#f0fdf4" : pct >= 50 ? "#fffbeb" : "#fef2f2";
+      const tipBorder = pct >= 70 ? "#bbf7d0" : pct >= 50 ? "#fde68a" : "#fecaca";
+      const tipLabelColor = pct >= 70 ? "#166534" : pct >= 50 ? "#92400e" : "#dc2626";
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
-            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${r.round}: ${ROUND_TYPE_LABELS[r.round] ?? "Unknown"}</h3>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${r.round}: ${label}</h3>
             <div style="display:flex;gap:16px;font-size:12px;color:#64748b;">
-              <span>Score: <strong style="color:${r.score >= 0.6 ? "#16a34a" : "#dc2626"}">${(r.score * 100).toFixed(1)}%</strong></span>
+              <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
               <span>Attempts: <strong>${r.attempts}</strong></span>
             </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <div style="flex:1;background:#e2e8f0;border-radius:4px;height:6px;overflow:hidden;">
+              <div style="width:${pct}%;background:${barColor};height:100%;border-radius:4px;"></div>
+            </div>
+            <span style="font-size:11px;color:${scoreColor};font-weight:700;width:32px;text-align:right;">${pct}%</span>
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Player Prompt / Response</div>
             <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(r.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>
           ${r.output ? `
-          <div>
+          <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
             <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${r.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>` : ""}
+          <div style="margin-top:4px;background:${tipBg};border:1px solid ${tipBorder};border-radius:6px;padding:8px 12px;font-size:12px;">
+            <strong style="color:${tipLabelColor};">Improvement Tip:</strong> <span style="color:#475569;">${tip}</span>
+          </div>
         </div>`;
     }
 
