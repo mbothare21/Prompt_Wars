@@ -145,7 +145,7 @@ export async function POST(req: Request) {
     },
 
     currentRound: 1,
-    rounds: getRounds(),
+    rounds: getRounds(sessionId),
 
     startTime: Date.now(),
     timeLimit: SESSION_TIME_LIMIT_MS,

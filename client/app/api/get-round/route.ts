@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     try {
       const body = (await req.json()) as Record<string, unknown>;
       const roundNumber = Number(body.roundNumber ?? NaN);
-      const rounds = getRounds();
+      const rounds = getRounds("admin");
       if (!Number.isInteger(roundNumber) || roundNumber < 1 || roundNumber > rounds.length) {
         return Response.json({ error: "Invalid roundNumber" });
       }

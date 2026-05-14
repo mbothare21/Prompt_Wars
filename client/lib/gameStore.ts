@@ -19,7 +19,7 @@ function stripSession(session: GameSession): StoredGameSession {
 function hydrateSession(session: StoredGameSession): GameSession {
   return {
     ...session,
-    rounds: getRounds(),
+    rounds: getRounds(session.sessionId),
   };
 }
 

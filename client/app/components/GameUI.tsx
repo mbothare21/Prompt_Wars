@@ -20,7 +20,8 @@ import {
   getTargetScore,
 } from "@/lib/gameConstants";
 import { compareCompetitiveStanding } from "@/lib/ranking";
-import type { PromptPart, Round } from "@/lib/types";
+import { getAdminPreviewRound, ROUND_SET_COUNTS } from "@/lib/generateRounds";
+import type { PromptPart } from "@/lib/types";
 
 type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "playing" | "bonus" | "finished";
 
@@ -161,6 +162,7 @@ export default function GameUI() {
   // Admin States
   const [adminTab, setAdminTab] = useState<"preview" | "leaderboard">("preview");
   const [adminRoundNumber, setAdminRoundNumber] = useState(1);
+  const [adminSetIndex, setAdminSetIndex] = useState(0);
   const [adminPlayers, setAdminPlayers] = useState<AdminPlayer[]>([]);
   const [currentAdminToken, setCurrentAdminToken] = useState<string | null>(null);
 
@@ -226,7 +228,6 @@ export default function GameUI() {
   };
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [currentRoundData, setCurrentRoundData] = useState<RoundViewData | null>(null);
-  const [adminPreviewRounds, setAdminPreviewRounds] = useState<Round[] | null>(null);
 
   const sessionRef = useRef<string | null>(null);
   sessionRef.current = sessionId;
@@ -579,17 +580,6 @@ export default function GameUI() {
     }
   };
 
-  useEffect(() => {
-    if (phase !== "admin-view" || adminPreviewRounds) return;
-
-    void import("@/lib/generateRounds")
-      .then(({ generateRounds }) => {
-        setAdminPreviewRounds(generateRounds());
-      })
-      .catch(() => {
-        setError("Failed to load admin preview.");
-      });
-  }, [adminPreviewRounds, phase]);
 
   const startGame = async () => {
     if (!player.name.trim() || !player.email.trim()) {
@@ -1167,7 +1157,7 @@ export default function GameUI() {
                     <button onClick={() => void downloadFullLeaderboard()} className="text-sm bg-green-900/60 hover:bg-green-800/80 text-green-200 border border-green-700 px-4 py-2 rounded uppercase font-bold tracking-wider">Export All (CSV)</button>
                   </>
                 )}
-                <button onClick={() => { setCurrentAdminToken(null); setAdminPreviewRounds(null); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
+                <button onClick={() => { setCurrentAdminToken(null); setAdminSetIndex(0); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
               </div>
             </div>
 
@@ -1178,16 +1168,26 @@ export default function GameUI() {
               <div className="flex flex-col gap-4">
               <div className="flex items-center gap-4 bg-black/40 p-4 rounded border border-cyan-900/30">
                   <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm">Select Sector:</label>
-                  <select value={adminRoundNumber} onChange={(e) => setAdminRoundNumber(Number(e.target.value))} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
+                  <select value={adminRoundNumber} onChange={(e) => { setAdminRoundNumber(Number(e.target.value)); setAdminSetIndex(0); }} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
                     {Array.from({ length: TOTAL_ROUNDS }, (_, idx) => (
                       <option key={idx + 1} value={idx + 1}>DOOR {idx + 1}</option>
                     ))}
                   </select>
+                  {(ROUND_SET_COUNTS[adminRoundNumber] ?? 1) > 1 && (
+                    <>
+                      <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm ml-4">Set:</label>
+                      <select value={adminSetIndex} onChange={(e) => setAdminSetIndex(Number(e.target.value))} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
+                        {Array.from({ length: ROUND_SET_COUNTS[adminRoundNumber] }, (_, idx) => (
+                          <option key={idx} value={idx}>SET {idx + 1}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   <span className="text-cyan-800 text-sm ml-auto font-mono hidden sm:block">{"// VIEW_MODE: OVERRIDE //"}</span>
                 </div>
 
-                {adminPreviewRounds?.[adminRoundNumber - 1] && (() => {
-                  const previewRound = adminPreviewRounds[adminRoundNumber - 1];
+                {(() => {
+                  const previewRound = getAdminPreviewRound(adminRoundNumber, adminSetIndex);
                   return (
                     <div className="border border-slate-700/50 rounded-xl p-6 bg-black/50 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] relative mt-2">
                       <div className="flex justify-between items-end mb-4 border-b border-slate-800 pb-4 gap-4">
