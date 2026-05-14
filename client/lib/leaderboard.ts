@@ -21,6 +21,7 @@ type DbLeaderboardPlayer = {
   _id?: string | { toString(): string };
   name?: string;
   email?: string;
+  location?: string;
   roundsPlayed?: number;
   timeTaken?: number;
   avgAccuracy?: number;
@@ -49,6 +50,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
     playerId,
     name: player.name ?? "Unknown",
     email: player.email,
+    location: player.location,
     startedAt,
     completedAt,
     roundsPlayed: player.roundsPlayed ?? 0,
@@ -69,6 +71,7 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
     .select({
       name: 1,
       email: 1,
+      location: 1,
       roundsPlayed: 1,
       timeTaken: 1,
       avgAccuracy: 1,

@@ -33,7 +33,8 @@ function shouldSkipPersistence(session: GameSession): boolean {
 
 async function upsertPlayerSnapshot(
   session: GameSession,
-  gameStatus: PersistedGameStatus
+  gameStatus: PersistedGameStatus,
+  location?: string
 ): Promise<void> {
   if (shouldSkipPersistence(session)) return;
 
@@ -46,7 +47,10 @@ async function upsertPlayerSnapshot(
   await PlayerModel.updateOne(
     { email: session.player.email },
     {
-      $setOnInsert: getBaseInsertFields(session),
+      $setOnInsert: {
+        ...getBaseInsertFields(session),
+        ...(location ? { location } : {}),
+      },
       $set: {
         name: session.player.name,
         roundsPlayed: session.player.roundsPlayed,
@@ -91,9 +95,9 @@ export async function findAnyPlayerAttemptByEmail(email: string): Promise<boolea
   return Boolean(existing);
 }
 
-export async function ensurePlayerRecord(session: GameSession): Promise<void> {
+export async function ensurePlayerRecord(session: GameSession, location?: string): Promise<void> {
   if (shouldSkipPersistence(session)) return;
-  await upsertPlayerSnapshot(session, "IN_PROGRESS");
+  await upsertPlayerSnapshot(session, "IN_PROGRESS", location);
 }
 
 export async function persistProgressSnapshot(session: GameSession): Promise<void> {

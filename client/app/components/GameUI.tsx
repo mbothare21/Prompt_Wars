@@ -66,6 +66,7 @@ type AdminPlayer = {
   playerId: string;
   name: string;
   email?: string;
+  location?: string;
   roundsPlayed: number;
   timeTakenSec: number;
   averageScore: number;
@@ -165,6 +166,7 @@ export default function GameUI() {
   const [adminSetIndex, setAdminSetIndex] = useState(0);
   const [adminPlayers, setAdminPlayers] = useState<AdminPlayer[]>([]);
   const [currentAdminToken, setCurrentAdminToken] = useState<string | null>(null);
+  const [adminLocationFilter, setAdminLocationFilter] = useState<"all" | "us-canada" | "india">("all");
 
   // Auto-sort Leaderboard Data based on strict criteria
   const sortedAdminPlayers = useMemo(() => {
@@ -187,6 +189,15 @@ export default function GameUI() {
       );
     });
   }, [adminPlayers]);
+
+  const filteredAdminPlayers = useMemo(() => {
+    if (adminLocationFilter === "all") return sortedAdminPlayers;
+    return sortedAdminPlayers.filter((p) => {
+      if (adminLocationFilter === "us-canada") return p.location === "US" || p.location === "Canada";
+      if (adminLocationFilter === "india") return p.location === "India";
+      return true;
+    });
+  }, [sortedAdminPlayers, adminLocationFilter]);
 
   // Player States
   const [roundNumber, setRoundNumber] = useState(1);
@@ -220,6 +231,7 @@ export default function GameUI() {
     playerId: string;
     name: string;
     email?: string;
+    location?: string;
     roundsPlayed: number;
     startedAt: number;
     completedAt?: number;
@@ -552,9 +564,10 @@ export default function GameUI() {
     };
   }, []);
 
-  const loadAdminPlayers = async (token: string) => {
+  const loadAdminPlayers = async (token: string, locationFilter?: string) => {
     try {
-      const res = await fetch("/api/admin/leaderboard", {
+      const params = locationFilter && locationFilter !== "all" ? `?location=${locationFilter}` : "";
+      const res = await fetch(`/api/admin/leaderboard${params}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -937,6 +950,7 @@ export default function GameUI() {
   type MongoPlayer = {
     name: string;
     email: string;
+    location?: string;
     roundsPlayed: number;
     timeTaken: number;
     avgAccuracy: number;
@@ -1093,7 +1107,8 @@ export default function GameUI() {
     }
 
     try {
-      const res = await fetch("/api/admin/export-leaderboard", {
+      const exportParams = adminLocationFilter !== "all" ? `?location=${adminLocationFilter}` : "";
+      const res = await fetch(`/api/admin/export-leaderboard${exportParams}`, {
         headers: { Authorization: `Bearer ${currentAdminToken}` },
       });
       const data = (await res.json()) as { error?: string; players?: MongoPlayer[] };
@@ -1153,11 +1168,24 @@ export default function GameUI() {
               <div className="flex gap-2">
                 {adminTab === "leaderboard" && (
                   <>
-                    <button onClick={() => currentAdminToken && void loadAdminPlayers(currentAdminToken)} className="text-sm bg-cyan-900 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 px-4 py-2 rounded uppercase font-bold tracking-wider">Sync Data</button>
-                    <button onClick={() => void downloadFullLeaderboard()} className="text-sm bg-green-900/60 hover:bg-green-800/80 text-green-200 border border-green-700 px-4 py-2 rounded uppercase font-bold tracking-wider">Export All (CSV)</button>
+                    <select
+                      value={adminLocationFilter}
+                      onChange={(e) => {
+                        const val = e.target.value as "all" | "us-canada" | "india";
+                        setAdminLocationFilter(val);
+                        if (currentAdminToken) void loadAdminPlayers(currentAdminToken, val);
+                      }}
+                      className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono text-sm uppercase tracking-wider"
+                    >
+                      <option value="all">All Locations</option>
+                      <option value="us-canada">US + Canada</option>
+                      <option value="india">India</option>
+                    </select>
+                    <button onClick={() => currentAdminToken && void loadAdminPlayers(currentAdminToken, adminLocationFilter)} className="text-sm bg-cyan-900 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 px-4 py-2 rounded uppercase font-bold tracking-wider">Sync Data</button>
+                    <button onClick={() => void downloadFullLeaderboard()} className="text-sm bg-green-900/60 hover:bg-green-800/80 text-green-200 border border-green-700 px-4 py-2 rounded uppercase font-bold tracking-wider">Export (CSV)</button>
                   </>
                 )}
-                <button onClick={() => { setCurrentAdminToken(null); setAdminSetIndex(0); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
+                <button onClick={() => { setCurrentAdminToken(null); setAdminSetIndex(0); setAdminLocationFilter("all"); setPhase("welcome"); setPlayer({ name: "", email: "" }); setError(null); }} className="text-sm bg-red-900/50 hover:bg-red-800/80 border border-red-800 text-red-200 px-4 py-2 rounded uppercase font-bold tracking-wider">Sever Uplink</button>
               </div>
             </div>
 
@@ -1367,7 +1395,7 @@ export default function GameUI() {
               <div className="bg-black/60 p-6 rounded border border-cyan-900/30 shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
                 <h2 className="text-lg font-mono font-bold text-cyan-500 mb-6 uppercase tracking-widest border-b border-cyan-900/50 pb-2">Leaderboard</h2>
                 <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                  {sortedAdminPlayers.length === 0 ? (
+                  {filteredAdminPlayers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
                       <span className="text-3xl mb-3 opacity-50">📡</span>
                       <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No players yet.</p>
@@ -1378,6 +1406,7 @@ export default function GameUI() {
                         <thead className="bg-slate-900/80 sticky top-0 z-10">
                           <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
                             <th className="p-4 font-bold">Name</th>
+                            <th className="p-4 font-bold text-center">Location</th>
                             <th className="p-4 font-bold text-center">Rooms</th>
                             <th className="p-4 font-bold text-center">Duration</th>
                             <th className="p-4 font-bold text-center">Precision</th>
@@ -1387,7 +1416,7 @@ export default function GameUI() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50 bg-black/40">
-                          {sortedAdminPlayers.map((p, idx) => {
+                          {filteredAdminPlayers.map((p, idx) => {
                             const statusCfg = GAME_STATUS_CONFIG[p.gameStatus ?? ""] ?? { label: "In Progress", color: "text-slate-500" };
                             return (
                               <tr key={p.playerId} className="hover:bg-cyan-950/20 transition-colors group">
@@ -1398,6 +1427,7 @@ export default function GameUI() {
                                   </div>
                                   {p.email && <div className="text-[10px] text-slate-600 ml-9 mt-1">{p.email}</div>}
                                 </td>
+                                <td className="p-4 text-slate-500 text-center text-xs font-mono">{p.location ?? "—"}</td>
                                 <td className="p-4 text-slate-400 text-center">{p.roundsPlayed}</td>
                                 <td className="p-4 text-slate-400 text-center">{p.timeTakenSec}s</td>
                                 <td className="p-4 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
@@ -2059,21 +2089,35 @@ export default function GameUI() {
 
           {/* Leaderboard */}
           {leaderboardData.length > 0 && (() => {
-            const playerRank = leaderboardData.findIndex(
+            const myEntry = leaderboardData.find(
               (p) => p.email === player.email || p.name === player.name
             );
+            const myLocation = myEntry?.location;
+            const locationGroup = (loc: string | undefined) => {
+              if (loc === "India") return "india";
+              if (loc === "US" || loc === "Canada") return "us-canada";
+              return "all";
+            };
+            const myGroup = locationGroup(myLocation);
+            const filteredLeaderboard = myGroup === "all"
+              ? leaderboardData
+              : leaderboardData.filter((p) => locationGroup(p.location) === myGroup);
+            const playerRank = filteredLeaderboard.findIndex(
+              (p) => p.email === player.email || p.name === player.name
+            );
+            const regionLabel = myGroup === "india" ? "India" : myGroup === "us-canada" ? "US & Canada" : "Global";
             return (
               <div className="terminal-panel p-8 rounded-xl text-left border border-slate-700 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative mt-8">
                 <div className="screen-glare absolute inset-0 rounded-xl" />
                 <div className="relative z-10">
                   <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
-                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Global Operative Registry
+                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> {regionLabel} Operative Registry
                   </h2>
 
                   {playerRank >= 0 && (
                     <div className="flex justify-between items-center bg-amber-950/30 p-4 rounded border border-amber-900/40 mb-6">
                       <span className="text-amber-600 font-bold uppercase tracking-widest text-xs font-mono">Your Rank</span>
-                      <span className="text-amber-400 font-black text-lg font-mono">#{playerRank + 1} of {leaderboardData.length}</span>
+                      <span className="text-amber-400 font-black text-lg font-mono">#{playerRank + 1} of {filteredLeaderboard.length}</span>
                     </div>
                   )}
 
@@ -2090,7 +2134,7 @@ export default function GameUI() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50 bg-black/40">
-                          {leaderboardData.map((p, idx) => {
+                          {filteredLeaderboard.map((p, idx) => {
                             const isMe = p.email === player.email || p.name === player.name;
                             const timeSec = p.completedAt && p.startedAt
                               ? Math.round((p.completedAt - p.startedAt) / 1000)

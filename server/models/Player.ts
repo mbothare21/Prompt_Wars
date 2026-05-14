@@ -31,6 +31,7 @@ const PlayerSchema = new Schema({
     default: "IN_PROGRESS",
   },
 
+  location: String,
   rounds: [RoundSchema],
   lastActivityAt: Date,
 

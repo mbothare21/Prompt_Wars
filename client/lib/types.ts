@@ -11,6 +11,7 @@ export type Player = {
   playerId: string;
   name: string;
   email?: string;
+  location?: string;
   startedAt: number;
   completedAt?: number;
   roundsPlayed: number;

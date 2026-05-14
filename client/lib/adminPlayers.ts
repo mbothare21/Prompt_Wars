@@ -15,6 +15,7 @@ export type RawAdminPlayerDoc = {
   _id?: unknown;
   name?: unknown;
   email?: unknown;
+  location?: unknown;
   roundsPlayed?: unknown;
   timeTaken?: unknown;
   avgAccuracy?: unknown;
@@ -29,6 +30,7 @@ export type AdminPlayerSummary = {
   playerId: string;
   name: string;
   email?: string;
+  location?: string;
   roundsPlayed: number;
   timeTakenSec: number;
   averageScore: number;
@@ -41,6 +43,7 @@ export type AdminPlayerExport = {
   _id: string;
   name: string;
   email?: string;
+  location?: string;
   roundsPlayed: number;
   timeTaken: number;
   avgAccuracy: number;
@@ -55,6 +58,7 @@ type NormalizedAdminPlayer = {
   id: string;
   name: string;
   email?: string;
+  location?: string;
   roundsPlayed: number;
   timeTaken: number;
   avgAccuracy: number;
@@ -186,6 +190,7 @@ function normalizeAdminPlayer(
     id: toPlayerId(doc._id, fallbackId),
     name,
     email,
+    location: toOptionalString(doc.location),
     roundsPlayed: Math.max(0, toFiniteNumber(doc.roundsPlayed)),
     timeTaken: Math.max(0, toFiniteNumber(doc.timeTaken)),
     avgAccuracy: toFiniteNumber(doc.avgAccuracy),
@@ -258,6 +263,7 @@ function toAdminPlayerSummaryShape(player: NormalizedAdminPlayer): AdminPlayerSu
     playerId: player.id,
     name: player.name,
     email: player.email,
+    location: player.location,
     roundsPlayed: player.roundsPlayed,
     timeTakenSec: Math.round(
       player.timeTaken > 10_000 ? player.timeTaken / 1000 : player.timeTaken
@@ -274,6 +280,7 @@ function toAdminPlayerExportShape(player: NormalizedAdminPlayer): AdminPlayerExp
     _id: player.id,
     name: player.name,
     email: player.email,
+    location: player.location,
     roundsPlayed: player.roundsPlayed,
     timeTaken: player.timeTaken,
     avgAccuracy: player.avgAccuracy,

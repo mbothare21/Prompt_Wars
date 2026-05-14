@@ -169,7 +169,7 @@ export async function POST(req: Request) {
     await bindEmailToSessionId(email, sessionId).catch((e) =>
       console.error("[start-game] Redis bind error:", e)
     );
-    await ensurePlayerRecord(session).catch((e) =>
+    await ensurePlayerRecord(session, identityCheck.location).catch((e) =>
       console.error("[start-game] MongoDB create player error:", e)
     );
   }

@@ -10,6 +10,16 @@ import PlayerModel from "@server/models/Player";
 
 export const runtime = "nodejs";
 
+function buildLocationFilter(locationParam: string | null) {
+  if (locationParam === "us-canada") {
+    return { location: { $in: ["US", "Canada"] } };
+  }
+  if (locationParam === "india") {
+    return { location: "India" };
+  }
+  return {};
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
@@ -18,14 +28,18 @@ export async function GET(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const url = new URL(req.url);
+  const locationParam = url.searchParams.get("location");
+  const locationFilter = buildLocationFilter(locationParam);
+
   try {
     const db = await connectDB();
     if (!db) {
       return Response.json({ players: getFallbackAdminPlayerExports() });
     }
 
-    const docs = (await PlayerModel.find({})
-      .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
+    const docs = (await PlayerModel.find(locationFilter)
+      .select("name email location roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
       .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
       .lean()) as RawAdminPlayerDoc[];
 
