@@ -1,5 +1,5 @@
 // /lib/generateRounds.ts
-import type { Round, PromptPart } from "./types";
+import type { Round, PromptPart, BonusEvalConfig } from "./types";
 
 function sessionHash(sessionId: string, salt: string): number {
   let h = 5381;
@@ -161,7 +161,15 @@ Assign ownership for risks, QA, and supply chain mitigation
         instruction:
             "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights (Conflicts, Decisions made, Dependencies, Risks, Next steps) in ≤90 words.",
         originalPrompt: "Give me the key points",
-        input: `The quarterly strategy meeting focused on declining customer retention in the company's subscription business. Marketing argued that churn was caused primarily by poor onboarding experiences, while Product believed the issue was related to lack of feature engagement. Engineering highlighted that several planned improvements could not begin due to unresolved dependencies on third-party integrations. Leadership decided to prioritize onboarding redesign over feature expansion for the next quarter and approved a pilot retention initiative for high-risk users. However, there were disagreements regarding budget allocation between marketing campaigns and product-led improvements. Risks discussed included increasing churn, lower annual renewals, and growing customer dissatisfaction if no immediate action was taken. Teams agreed to conduct a detailed churn analysis, redesign onboarding journeys, and revisit feature adoption metrics in the next review cycle.`,
+        input: `The quarterly strategy review meeting focused heavily on the growing concerns around customer retention and declining renewal rates in the company's subscription business. Marketing leadership argued that customers were abandoning the platform because the onboarding experience was confusing and lacked clear activation milestones. They pointed to survey feedback indicating that many users did not fully understand the platform's value during their first two weeks.
+
+However, Product leadership disagreed and argued that churn was primarily driven by poor long-term feature engagement rather than onboarding. They highlighted internal analytics showing that even users who completed onboarding often disengaged due to low usage of premium capabilities. This disagreement created tension around where investment should be prioritized in the next quarter.
+
+Engineering teams raised concerns that several planned retention improvements could not begin immediately due to unresolved dependencies on third-party integrations and analytics vendors. Some infrastructure work was blocked pending approvals from external partners, delaying roadmap execution.
+
+Leadership ultimately decided to prioritize onboarding redesign for the next quarter while approving a limited pilot program focused on retaining high-risk customers through personalized engagement campaigns. Budget discussions became contentious, with Marketing requesting increased acquisition spending while Product argued for stronger investment in user experience improvements.
+
+Risks discussed included increasing churn, lower annual contract renewals, negative customer sentiment, and rising acquisition costs if retention issues remained unresolved. Teams agreed to perform a deeper churn analysis, redesign onboarding journeys, review premium feature adoption, and revisit roadmap prioritization during the next strategy cycle.`,
         expectedOutput: `Conflicts:
 Marketing blamed onboarding issues for churn, while Product believed low feature engagement was the main cause. Budget allocation disagreements remained unresolved.
 
@@ -193,7 +201,15 @@ Conduct churn analysis, redesign onboarding, review feature adoption metrics.`,
         instruction:
             "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary (Conflicts, Decisions made, Dependencies, Risks, Next steps) in ≤90 words.",
         originalPrompt: "Tell me the important parts",
-        input: `During the operational review meeting, teams discussed recurring delays in customer issue resolution. Support leadership argued that engineering response times were slowing down resolution efforts, while Engineering stated that incomplete issue documentation from support teams caused unnecessary delays. Several automation initiatives were proposed, but implementation was blocked due to pending approvals from compliance and infrastructure teams. Leadership decided to prioritize high-severity issue handling while postponing lower-priority process changes until the next quarter. Concerns were raised regarding rising customer dissatisfaction, potential SLA breaches, and burnout among support staff due to increasing workloads. It was agreed that teams would standardize incident documentation, improve escalation workflows, and revisit automation opportunities after dependencies were resolved.`,
+        input: `During the monthly operational review meeting, leadership teams discussed recurring delays in customer issue resolution and growing dissatisfaction among enterprise accounts. Support leadership argued that engineering response times had slowed considerably, resulting in unresolved customer escalations and longer turnaround times. They presented examples where urgent customer incidents remained open for several days because technical investigations were delayed.
+
+Engineering leadership disagreed and argued that incomplete issue documentation from support teams was the root cause of delays. They highlighted that unclear reproduction steps and inconsistent logging often forced engineering teams to spend additional time diagnosing issues before work could begin. This disagreement led to tension regarding accountability and ownership.
+
+Several automation initiatives were proposed to reduce manual operational overhead, including automated incident categorization and intelligent routing systems. However, implementation could not proceed immediately because compliance approvals and infrastructure dependencies remained unresolved. Leadership expressed concern that these blockers were slowing down transformation efforts.
+
+After discussion, leadership decided to prioritize improvements for high-severity incident handling while postponing lower-priority operational changes until the next quarter. Risks identified included increasing customer dissatisfaction, SLA breaches, employee burnout among support staff, and reputational damage for enterprise clients if response times continued to worsen.
+
+Teams agreed to standardize incident documentation, redesign escalation workflows, improve communication between departments, and revisit automation opportunities after approvals and infrastructure dependencies were resolved.`,
         expectedOutput: `Conflicts:
 Support blamed engineering delays, while Engineering cited poor issue documentation.
 
@@ -436,26 +452,295 @@ Find the optimal sequence of crossings and returns that minimizes the total time
     },
 ];
 
-const ROUND_6_SETS = [
-    // ── Set 1 (Original — Aurora Identity Migration) ──────────────────
+const ROUND_6_SETS: Array<{
+    input: string;
+    expectedOutput: string;
+    constraints: Record<string, never>;
+    bonusEvalConfig: BonusEvalConfig;
+}> = [
+    // ── Set 1 (Aurora Identity Migration) ────────────────────────────
     {
         input: `The Aurora identity-platform migration is 3 weeks behind schedule after an external vendor schema change broke Okta SCIM provisioning. The fallback batch-sync job is now duplicating accounts in 4 of 12 regions. The original enterprise cutover date was May 15, and the revised target is June 9 if the team approves a phased rollout and a weekend production freeze. The platform serves 38,000 employee accounts and 6,200 contractor accounts across the US, EU, and APAC. The SSO uptime SLO is 99.95%, and there have been 9 Sev-2 authentication incidents in the last 30 days. Legal has raised GDPR concerns around EU log retention, and Security requires MFA enforcement before go-live. Customer Success needs a communication plan for 47 strategic accounts. Finance has capped additional spend at $180k, while an external identity consultant would cost $95k. The team currently has 3 senior IAM engineers, 2 newly onboarded contractors, and 1 QA lead. Automated regression coverage is 71% with a target of 92%. Key stakeholders are the CIO, CISO, VP Customer Success, Director of Compliance, and CFO. A go/no-go decision is needed by Wednesday at 4 PM, and any production cutover must happen during the Saturday 10 PM-2 AM maintenance window.`,
         expectedOutput: "An executive stakeholder update with quantified risks, explicit decisions, a revised timeline, and actionable next steps.",
         constraints: {},
+        bonusEvalConfig: {
+            baselineMetaPrompt: "Write a prompt that turns the scenario into an executive stakeholder update.",
+            requiredSections: ["Executive Summary", "Current Status", "Root Cause Analysis", "Impact Assessment", "Decision Required", "Recovery Plan", "Revised Timeline", "Risk Mitigation", "Next Steps"],
+            targetOutput: `Subject: Aurora Identity Migration - Status Update and Go/No-Go Recommendation
+
+Dear Stakeholders,
+
+Executive Summary:
+Aurora is currently 3 weeks behind the original May 15 enterprise cutover due to an Okta SCIM provisioning failure caused by a vendor schema change. We can still reach a revised June 9 cutover if we approve a phased rollout, lock a weekend change freeze, and finalize the go/no-go decision by Wednesday at 4 PM.
+
+Current Status:
+- Scope: Identity migration for 38,000 employee accounts and 6,200 contractor accounts across the US, EU, and APAC
+- Coverage: Automated regression coverage is 71% against a 92% target
+- Reliability: 9 Sev-2 authentication incidents in the last 30 days against a 99.95% uptime SLO
+- Team: 3 senior IAM engineers, 2 newly onboarded contractors, and 1 QA lead
+- Customer impact planning: Customer Success needs outreach for 47 strategic accounts
+
+Root Cause Analysis:
+An external vendor schema change broke Okta SCIM provisioning, and the fallback batch-sync process is now duplicating accounts in 4 of 12 regions.
+
+Impact Assessment:
+- Timeline: The original May 15 cutover is no longer achievable; the revised target is June 9
+- Security and compliance: MFA enforcement remains mandatory before go-live, and Legal has flagged GDPR concerns around EU log retention
+- Operational risk: Continued identity instability increases the likelihood of missing the 99.95% uptime SLO
+- Financial: Additional spend is capped at $180k, and the external identity consultant would cost $95k
+- Customer risk: 47 strategic accounts require proactive communication before any phased rollout
+
+Decision Required:
+Please approve by Wednesday 4 PM:
+1. A phased regional rollout instead of a single global cutover
+2. A Saturday 10 PM-2 AM production maintenance-window freeze
+3. The $95k consultant engagement within the $180k contingency cap
+
+Recovery Plan:
+1. Stabilize SCIM mappings and stop duplicate account creation in the 4 affected regions
+2. Raise regression coverage from 71% to 92% before final cutover
+3. Complete MFA readiness checks and validate GDPR-compliant EU log retention
+4. Prepare Customer Success communications for all 47 strategic accounts
+5. Use the Saturday maintenance window for phased production release
+
+Risk Mitigation:
+- Maintain a rollback path to the legacy identity flow for one full maintenance cycle
+- Add regional checkpoints with Security and Compliance signoff before expansion
+- Run war-room monitoring during cutover to protect the 99.95% uptime SLO
+
+Revised Timeline:
+| Milestone | Original Date | Revised Date |
+|-----------|---------------|--------------|
+| SCIM fix complete | May 1 | May 22 |
+| Regression coverage >= 92% | May 8 | May 29 |
+| MFA + GDPR signoff | May 10 | June 3 |
+| Strategic account communications sent | May 12 | June 5 |
+| Production cutover | May 15 | June 9 |
+
+Next Steps:
+- [ ] Finalize the go/no-go recommendation deck for Wednesday 4 PM
+- [ ] Confirm consultant contract and budget approval
+- [ ] Complete the regional duplicate-account remediation plan
+- [ ] Publish the customer communication draft for the 47 strategic accounts
+- [ ] Confirm Saturday 10 PM-2 AM cutover staffing and war-room ownership
+
+Best regards,
+Program Lead, Aurora Identity Migration`,
+            promptChecks: [
+                { label: "executive stakeholder email", test: (t) => /\b(email|update|memo|status)\b/i.test(t) && /\b(stakeholder|executive|leadership)\b/i.test(t) },
+                { label: "subject line instruction", test: (t) => /\bsubject\b/i.test(t) },
+                { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured output|explicit sections?)\b/i.test(t) || /\b(executive summary|root cause|impact assessment|recovery plan)\b/i.test(t) },
+                { label: "quantified facts and dates", test: (t) => /\b(exact|specific|quantified|numeric|numbers?|metrics|dates?)\b/i.test(t) || /(38,?000|6,?200|71%|92%|99\.95%|180k|95k|47 strategic|may 15|june 9)/i.test(t) },
+                { label: "timeline or milestone table", test: (t) => /\b(table|timeline|milestone)\b/i.test(t) },
+                { label: "risk mitigation and rollback", test: (t) => /\b(risk|mitigation|rollback|fallback|monitoring)\b/i.test(t) },
+                { label: "compliance and security requirements", test: (t) => /\b(gdpr|compliance|security|mfa|retention)\b/i.test(t) },
+                { label: "decision request and deadline", test: (t) => /\b(decision|approve|go\/?no-go|recommendation|deadline)\b/i.test(t) || /\b(wednesday|4 ?pm)\b/i.test(t) },
+                { label: "customer communications", test: (t) => /\b(customer success|strategic accounts?|customer communication|outreach)\b/i.test(t) },
+                { label: "phased rollout and maintenance window", test: (t) => /\b(phased rollout|regional rollout|maintenance window|change freeze|cutover window)\b/i.test(t) },
+                { label: "professional tone", test: (t) => /\b(professional|clear|concise|executive tone)\b/i.test(t) },
+            ],
+            outputFactChecks: [
+                { label: "subject line", test: (t) => /^subject:\s*aurora identity migration/i.test(t.trim()) },
+                { label: "delay and revised cutover", test: (t) => /\b3 weeks behind\b/i.test(t) && /\bmay 15\b/i.test(t) && /\bjune 9\b/i.test(t) },
+                { label: "SCIM root cause and affected regions", test: (t) => /\bokta\b/i.test(t) && /\bscim\b/i.test(t) && /\bschema change\b/i.test(t) && /\bduplicate\w*\b/i.test(t) && /\b4 of 12 regions\b/i.test(t) },
+                { label: "account scope and regional coverage", test: (t) => /38,?000/.test(t) && /6,?200/.test(t) && /\b(us|eu|apac)\b/i.test(t) },
+                { label: "reliability and test metrics", test: (t) => /99\.95%/.test(t) && /\b9\s+sev-2\b/i.test(t) && /71%/.test(t) && /92%/.test(t) },
+                { label: "compliance and security requirements", test: (t) => /\bgdpr\b/i.test(t) && /\beu\b/i.test(t) && /\blog retention\b/i.test(t) && /\bmfa\b/i.test(t) },
+                { label: "budget and consultant tradeoff", test: (t) => /\b180k\b/i.test(t) && /\b95k\b/i.test(t) && /\bconsultant\b/i.test(t) },
+                { label: "customer communication scope", test: (t) => /\b47 strategic accounts?\b/i.test(t) || (/\b47\b/.test(t) && /\bcustomer/i.test(t)) },
+                { label: "decision deadline and maintenance window", test: (t) => /\bwednesday\b/i.test(t) && /\b4 ?pm\b/i.test(t) && /\bsaturday\b/i.test(t) && /\b10 ?pm\b/i.test(t) && /\b2 ?am\b/i.test(t) },
+                { label: "phased rollout recommendation", test: (t) => /\bphased rollout\b/i.test(t) },
+                { label: "timeline table", test: (t) => /\|.*milestone.*original date.*revised date.*\|/i.test(t) || (/\bmilestone\b/i.test(t) && /\brevised date\b/i.test(t)) },
+                { label: "checklist-style next steps", test: (t) => /\[[ xX]?\]/.test(t) || /\bnext steps:\b/i.test(t) },
+            ],
+            structureChecks: [
+                { label: "salutation", test: (t) => /\bdear stakeholders\b/i.test(t) },
+                { label: "closing", test: (t) => /\b(best regards|regards|sincerely)\b/i.test(t) },
+                { label: "multiple paragraphs", test: (t) => t.split(/\n\s*\n/).filter((p) => p.trim().length > 0).length >= 4 },
+                { label: "table formatting", test: (t) => /\|.+\|/.test(t) },
+                { label: "checklist formatting", test: (t) => /\[[ xX]?\]/.test(t) },
+            ],
+        },
     },
 
-    // ── Set 2 (Fintech Security Incident — MFA / Credential Stuffing) ─
+    // ── Set 2 (Fintech Security — MFA / Credential Stuffing) ─────────
     {
-        input: `A fintech company detected suspicious login attempts affecting enterprise customers in Europe and North America. Security monitoring flagged abnormal MFA failures, while legal teams raised concerns around regional compliance obligations. Engineering suspects credential stuffing but lacks confirmation. Leadership needs a go/no-go recommendation on temporarily restricting access for affected users while balancing business continuity.`,
+        input: `A multinational fintech company operating across Europe and North America has detected an unusual increase in suspicious authentication failures affecting enterprise customer accounts over the past 72 hours. Internal monitoring systems flagged repeated failed MFA attempts, geographically inconsistent login behavior, and elevated credential reset requests originating from multiple regions.
+
+Security teams suspect a coordinated credential stuffing attack but cannot yet confirm the source due to incomplete forensic evidence. Engineering teams are concerned that aggressively restricting account access could disrupt business-critical operations for enterprise customers, particularly those relying on real-time financial reporting and automated payment processing.
+
+Meanwhile, legal and compliance teams have raised concerns regarding regulatory obligations in different jurisdictions, especially around customer communication, temporary access restrictions, and incident disclosure timelines. Customer success teams are also reporting increasing anxiety among major accounts, with some enterprise customers threatening escalation unless immediate action is taken.
+
+Executive leadership needs a clear recommendation on whether to temporarily restrict access for affected users, implement selective mitigations, or wait for additional evidence. They require a concise but highly structured executive update that balances business continuity, security posture, compliance obligations, customer trust, and operational feasibility.`,
         expectedOutput: "An executive stakeholder update with risks, decisions, mitigation strategy, timeline, and recommended actions.",
         constraints: {},
+        bonusEvalConfig: {
+            baselineMetaPrompt: "Write a prompt that turns the security incident scenario into an executive stakeholder update covering risks, decisions, and recommended actions.",
+            requiredSections: ["Executive Summary", "Incident Overview", "Risk Assessment", "Decision Required", "Mitigation Strategy", "Timeline", "Recommended Actions"],
+            targetOutput: `Subject: Security Alert — Suspicious Login Activity Affecting Enterprise Accounts
+
+Dear Stakeholders,
+
+Executive Summary:
+Security monitoring has detected abnormal MFA failure rates across enterprise accounts in Europe and North America. Engineering suspects a credential stuffing attack, though confirmation is pending. Leadership must issue a go/no-go decision on temporarily restricting access for affected users while maintaining business continuity.
+
+Incident Overview:
+- Affected scope: Enterprise customers in Europe and North America
+- Anomaly type: Abnormal MFA failure rates on enterprise accounts
+- Suspected vector: Credential stuffing attack (under active investigation)
+- Current status: Incident response team engaged; investigation ongoing
+
+Risk Assessment:
+- Security risk: Potential unauthorized access to enterprise customer accounts if credential stuffing is confirmed
+- Business continuity risk: Temporary access restriction may disrupt enterprise customer workflows
+- Compliance risk: EU regulatory obligations may require disclosure and breach notification
+- Reputational risk: Delayed or inadequate response could erode enterprise customer trust
+
+Decision Required:
+Go/No-Go: Temporarily restrict access for affected enterprise users in Europe and North America pending investigation confirmation.
+
+Mitigation Strategy:
+- Immediate: Flag and monitor all affected accounts; enforce step-up authentication for suspicious sessions
+- If Go: Notify affected customers with estimated resolution timeline; activate dedicated support escalation path
+- If No-Go: Deploy enhanced real-time monitoring controls and define clear escalation triggers
+- Parallel track: Engineering to confirm or rule out credential stuffing within 4 hours
+
+Timeline:
+- T+0: Anomaly detected; incident response team activated
+- T+2h: Preliminary engineering investigation report complete
+- T+4h: Go/No-Go decision required from leadership
+- T+6h: Access restriction or enhanced monitoring controls implemented
+- T+24h: Full incident report and customer communication issued
+
+Recommended Actions:
+1. Convene Security, Legal, and Engineering teams immediately for joint situation assessment
+2. Prepare customer notification templates for both Go and No-Go scenarios
+3. Confirm regional compliance obligations with Legal for EU-affected accounts
+4. Activate real-time monitoring dashboard for continuous oversight
+5. Schedule leadership briefing at T+4h for final go/no-go decision
+
+Best regards,
+Security Incident Response Team`,
+            promptChecks: [
+                { label: "executive stakeholder communication", test: (t) => /\b(email|update|brief|status)\b/i.test(t) && /\b(stakeholder|executive|leadership)\b/i.test(t) },
+                { label: "subject line instruction", test: (t) => /\bsubject\b/i.test(t) },
+                { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured|explicit)\b/i.test(t) || /\b(executive summary|incident|risk assessment|mitigation|recommended actions)\b/i.test(t) },
+                { label: "risk assessment and impact", test: (t) => /\b(risk|impact|threat|exposure)\b/i.test(t) },
+                { label: "go/no-go decision framing", test: (t) => /\b(decision|go\/?no-go|recommend|approve|action)\b/i.test(t) },
+                { label: "mitigation strategy", test: (t) => /\b(mitigat|contain|remediat|response|restrict)\b/i.test(t) },
+                { label: "timeline or urgency", test: (t) => /\b(timeline|urgency|timeframe|deadline|hours?|schedule)\b/i.test(t) },
+                { label: "compliance and regional obligations", test: (t) => /\b(compliance|regulatory|gdpr|legal|obligation|regional)\b/i.test(t) },
+                { label: "business continuity balance", test: (t) => /\b(business continuity|operations?|availability|disruption|balance)\b/i.test(t) },
+                { label: "professional tone", test: (t) => /\b(professional|clear|concise|executive)\b/i.test(t) },
+            ],
+            outputFactChecks: [
+                { label: "subject line present", test: (t) => /^subject:/im.test(t) },
+                { label: "MFA failure or authentication anomaly", test: (t) => /\bmfa\b/i.test(t) && /\b(failure|anomal|abnormal|suspicious)\b/i.test(t) },
+                { label: "credential stuffing mention", test: (t) => /\bcredential stuffing\b/i.test(t) || /\b(attack vector|stuffing)\b/i.test(t) },
+                { label: "regional scope: Europe and North America", test: (t) => /\b(europe|eu)\b/i.test(t) && /\b(north america|us|united states)\b/i.test(t) },
+                { label: "risk articulation", test: (t) => (t.match(/\b(risk|threat|exposure)\b/gi) ?? []).length >= 2 },
+                { label: "decision recommendation", test: (t) => /\b(decision|go\/?no-go|recommend|approve)\b/i.test(t) },
+                { label: "mitigation actions listed", test: (t) => /\b(mitigat|restrict|monitor|step-up|authentication|contain)\b/i.test(t) },
+                { label: "timeline or urgency markers", test: (t) => /\b(t\+\d|hours?|timeline|urgent|immediately|within)\b/i.test(t) },
+                { label: "compliance consideration", test: (t) => /\b(compliance|regulatory|gdpr|legal|obligation)\b/i.test(t) },
+                { label: "business continuity", test: (t) => /\b(business continuity|operations?|disruption|continuity)\b/i.test(t) },
+                { label: "recommended actions listed", test: (t) => /\brecommended actions?\b/i.test(t) || (/\b(action|step)\b/i.test(t) && /\d+\./.test(t)) },
+                { label: "professional closing", test: (t) => /\b(best regards|regards|sincerely)\b/i.test(t) },
+            ],
+            structureChecks: [
+                { label: "subject line", test: (t) => /^subject:/im.test(t) },
+                { label: "professional salutation", test: (t) => /\bdear\b/i.test(t) },
+                { label: "multiple sections with headings", test: (t) => (t.match(/^[A-Z][^\n:]{2,40}:/gm) ?? []).length >= 3 },
+                { label: "bullet points or numbered items", test: (t) => /^[-*]\s+/m.test(t) || /^\d+\.\s+/m.test(t) },
+                { label: "professional closing", test: (t) => /\b(best regards|regards|sincerely)\b/i.test(t) },
+            ],
+        },
     },
 
     // ── Set 3 (Semiconductor Supply Chain Disruption) ─────────────────
     {
-        input: `A global electronics manufacturer is facing delays after a critical semiconductor supplier reported production issues. Multiple product launches may be impacted, finance has frozen additional spending, and customer success teams are concerned about enterprise account escalations. Leadership needs a revised rollout plan and quantified risk assessment.`,
+        input: `A global electronics manufacturer preparing for multiple high-profile product launches is facing a growing supply chain disruption after a major semiconductor supplier unexpectedly reported production instability. Initial reports suggest that shortages may continue for several weeks, affecting inventory commitments across North America, Europe, and Asia.
+
+Operations teams have proposed delaying lower-priority product lines to preserve supply for flagship launches, while finance leadership has temporarily frozen additional procurement spending until cost implications become clearer. Product leadership believes launch timelines should remain unchanged to avoid reputational damage and competitive disadvantage.
+
+Customer success and enterprise account teams have raised concerns that delayed shipments could significantly affect strategic enterprise relationships, particularly for customers with long-term purchasing agreements and deployment deadlines. Meanwhile, procurement teams are investigating alternate suppliers, but legal teams have warned that switching vendors may introduce compliance and contractual risks.
+
+Executive leadership requires an updated rollout recommendation that quantifies risks, evaluates operational dependencies, considers financial and customer impact, and provides a practical mitigation plan. The final communication must be concise, executive-friendly, and action-oriented.`,
         expectedOutput: "A concise executive briefing with risks, dependencies, revised timeline, and actionable next steps.",
         constraints: {},
+        bonusEvalConfig: {
+            baselineMetaPrompt: "Write a prompt that turns the supply chain disruption scenario into a concise executive briefing covering risks, revised timeline, and next steps.",
+            requiredSections: ["Situation Summary", "Risk Assessment", "Dependencies", "Revised Timeline", "Next Steps"],
+            targetOutput: `Executive Briefing: Semiconductor Supply Chain Disruption
+
+Situation Summary:
+A critical semiconductor supplier has reported production issues, placing multiple product launches at risk. Finance has frozen additional spending, limiting near-term mitigation options. Customer success teams are managing enterprise account escalations. Leadership requires a revised rollout plan and a quantified risk assessment to determine the path forward.
+
+Risk Assessment:
+- Product launch risk: High — multiple launches face delays of 4–12 weeks depending on supplier recovery
+- Revenue impact: Significant — delayed launches reduce near-term revenue and may affect annual targets
+- Enterprise account risk: Medium-High — escalations may lead to contract renegotiation or churn without proactive communication
+- Financial risk: Constrained — spending freeze limits alternative supplier onboarding options
+- Supplier dependency risk: High concentration risk amplifies the blast radius of any continued production disruption
+
+Dependencies:
+- Product launches depend on semiconductor component availability from the affected supplier
+- Alternative supplier qualification depends on procurement lead time and Finance approval for emergency spend
+- Customer communication plans depend on confirmed revised launch timelines
+- Leadership rollout decisions depend on supplier recovery confirmation
+
+Revised Timeline:
+| Initiative | Original Target | Revised Estimate | Confidence |
+|---|---|---|---|
+| Supplier recovery confirmation | — | 2 weeks | Low |
+| Alternative supplier qualified | — | 6–8 weeks | Medium |
+| Product A launch | Per roadmap | +4–8 weeks | Medium |
+| Product B launch | Per roadmap | +6–12 weeks | Low |
+| Enterprise account briefings | Immediate | This week | High |
+
+Next Steps:
+1. Obtain confirmed recovery timeline and full production impact scope from supplier
+2. Identify and fast-track qualification of alternative semiconductor suppliers
+3. Request Finance to evaluate emergency spend approval for supplier diversification
+4. Direct Customer Success to proactively brief enterprise accounts with preliminary timeline updates
+5. Present scenario-based rollout options to leadership for decision by end of week
+
+Best regards,
+Supply Chain Risk Management Team`,
+            promptChecks: [
+                { label: "executive briefing format", test: (t) => /\b(brief|report|update|summary)\b/i.test(t) && /\b(executive|leadership|stakeholder)\b/i.test(t) },
+                { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured|explicit)\b/i.test(t) || /\b(situation|risk|dependenc|timeline|next steps)\b/i.test(t) },
+                { label: "risk quantification", test: (t) => /\b(risk|quantif|assess|measur|impact)\b/i.test(t) },
+                { label: "dependencies identification", test: (t) => /\bdependenc\b/i.test(t) },
+                { label: "revised timeline or schedule", test: (t) => /\b(timeline|revised|schedule|delay|date)\b/i.test(t) },
+                { label: "next steps or action items", test: (t) => /\b(next steps?|action|recommend|priorit)\b/i.test(t) },
+                { label: "financial or budget impact", test: (t) => /\b(financ|budget|spend|cost|revenue)\b/i.test(t) },
+                { label: "customer or enterprise account consideration", test: (t) => /\b(customer|enterprise|account|client)\b/i.test(t) },
+                { label: "structured output format", test: (t) => /\b(table|structured|format|list|bullet)\b/i.test(t) },
+                { label: "concise professional tone", test: (t) => /\b(concise|professional|clear|brief|executive)\b/i.test(t) },
+            ],
+            outputFactChecks: [
+                { label: "semiconductor or supplier mention", test: (t) => /\bsemiconductor\b/i.test(t) || /\bsupplier\b/i.test(t) },
+                { label: "product launch delay", test: (t) => /\b(product launch|launch|delay)\b/i.test(t) },
+                { label: "finance freeze or budget constraints", test: (t) => /\b(financ|budget|spending freeze|frozen)\b/i.test(t) },
+                { label: "enterprise account escalation", test: (t) => /\b(enterprise|customer success|account|escalat)\b/i.test(t) },
+                { label: "risk quantification or severity", test: (t) => (t.match(/\b(risk|impact|high|medium|low|critical)\b/gi) ?? []).length >= 3 },
+                { label: "dependency analysis", test: (t) => /\bdependenc\b/i.test(t) },
+                { label: "revised timeline included", test: (t) => /\b(revised|timeline|schedule|estimate|weeks?)\b/i.test(t) },
+                { label: "alternative supplier or mitigation", test: (t) => /\b(alternative|supplier|mitigation|diversif|contingency)\b/i.test(t) },
+                { label: "actionable next steps", test: (t) => /\bnext steps?\b/i.test(t) || (/\d+\./.test(t) && /\b(confirm|identify|prepare|request|direct|present)\b/i.test(t)) },
+                { label: "leadership decision support", test: (t) => /\b(leadership|decision|approval|executive|recommend)\b/i.test(t) },
+                { label: "structured table or list", test: (t) => /\|.+\|/.test(t) || (/^\d+\./m.test(t) && (t.match(/^\d+\./gm) ?? []).length >= 3) },
+                { label: "professional closing", test: (t) => /\b(best regards|regards|team|management)\b/i.test(t) },
+            ],
+            structureChecks: [
+                { label: "titled executive briefing", test: (t) => /\b(executive briefing|briefing|executive report)\b/i.test(t) },
+                { label: "multiple sections with headings", test: (t) => (t.match(/^[A-Z][^\n:]{2,40}:/gm) ?? []).length >= 3 },
+                { label: "table or structured data", test: (t) => /\|.+\|/.test(t) },
+                { label: "numbered or bulleted items", test: (t) => /^\d+\.\s+/m.test(t) || /^[-*]\s+/m.test(t) },
+                { label: "professional closing", test: (t) => /\b(best regards|regards|team|management)\b/i.test(t) },
+            ],
+        },
     },
 ];
 

@@ -157,6 +157,7 @@ export async function POST(req: Request) {
           evaluateMetaBonusRound({
             metaPrompt: metaPrompt ?? "",
             basePrompt: round.input ?? "",
+            evalConfig: round.bonusEvalConfig!,
           })
         )
       : await withTimeout(

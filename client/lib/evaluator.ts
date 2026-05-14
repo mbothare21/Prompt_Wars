@@ -2,7 +2,7 @@ import "server-only";
 
 import { getOpenAI } from "./openai";
 import { getSimilarity } from "./similarity";
-import type { Round } from "./types";
+import type { Round, BonusCheck, BonusEvalConfig } from "./types";
 import { cacheKey, cacheGet, cacheSet } from "./cache";
 
 function getTimeoutMs(value: string | undefined, fallback: number): number {
@@ -26,7 +26,6 @@ type ObjectConstraints = {
 };
 
 type CombinedScores = { quality: number; analogy: number; prompt: number };
-type BonusCheck = { label: string; test: (text: string) => boolean };
 type BaselineRoundType = "IMPROVE" | "REVERSE" | "OPTIMIZE" | "STRUCTURED" | "BONUS";
 type BaselineGate = {
   baselineGateScore: number;
@@ -47,243 +46,6 @@ const BASELINE_MARGIN_BY_TYPE: Record<BaselineRoundType, number> = {
   BONUS: 0.08,
 };
 
-const BONUS_TARGET_OUTPUT = `Subject: Aurora Identity Migration - Status Update and Go/No-Go Recommendation
-
-Dear Stakeholders,
-
-Executive Summary:
-Aurora is currently 3 weeks behind the original May 15 enterprise cutover due to an Okta SCIM provisioning failure caused by a vendor schema change. We can still reach a revised June 9 cutover if we approve a phased rollout, lock a weekend change freeze, and finalize the go/no-go decision by Wednesday at 4 PM.
-
-Current Status:
-- Scope: Identity migration for 38,000 employee accounts and 6,200 contractor accounts across the US, EU, and APAC
-- Coverage: Automated regression coverage is 71% against a 92% target
-- Reliability: 9 Sev-2 authentication incidents in the last 30 days against a 99.95% uptime SLO
-- Team: 3 senior IAM engineers, 2 newly onboarded contractors, and 1 QA lead
-- Customer impact planning: Customer Success needs outreach for 47 strategic accounts
-
-Root Cause Analysis:
-An external vendor schema change broke Okta SCIM provisioning, and the fallback batch-sync process is now duplicating accounts in 4 of 12 regions. The issue surfaced during regional validation and exposed insufficient automated coverage around provisioning edge cases.
-
-Impact Assessment:
-- Timeline: The original May 15 cutover is no longer achievable; the revised target is June 9
-- Security and compliance: MFA enforcement remains mandatory before go-live, and Legal has flagged GDPR concerns around EU log retention
-- Operational risk: Continued identity instability increases the likelihood of missing the 99.95% uptime SLO
-- Financial: Additional spend is capped at $180k, and the external identity consultant would cost $95k
-- Customer risk: 47 strategic accounts require proactive communication before any phased rollout
-
-Decision Required:
-Please approve by Wednesday 4 PM:
-1. A phased regional rollout instead of a single global cutover
-2. A Saturday 10 PM-2 AM production maintenance-window freeze
-3. The $95k consultant engagement within the $180k contingency cap
-
-Recovery Plan:
-1. Stabilize SCIM mappings and stop duplicate account creation in the 4 affected regions
-2. Raise regression coverage from 71% to 92% before final cutover
-3. Complete MFA readiness checks and validate GDPR-compliant EU log retention
-4. Prepare Customer Success communications for all 47 strategic accounts
-5. Use the Saturday maintenance window for phased production release
-
-Risk Mitigation:
-- Maintain a rollback path to the legacy identity flow for one full maintenance cycle
-- Add regional checkpoints with Security and Compliance signoff before expansion
-- Run war-room monitoring during cutover to protect the 99.95% uptime SLO
-
-Revised Timeline:
-| Milestone | Original Date | Revised Date |
-|-----------|---------------|--------------|
-| SCIM fix complete | May 1 | May 22 |
-| Regression coverage >= 92% | May 8 | May 29 |
-| MFA + GDPR signoff | May 10 | June 3 |
-| Strategic account communications sent | May 12 | June 5 |
-| Production cutover | May 15 | June 9 |
-
-Next Steps:
-- [ ] Finalize the go/no-go recommendation deck for Wednesday 4 PM
-- [ ] Confirm consultant contract and budget approval
-- [ ] Complete the regional duplicate-account remediation plan
-- [ ] Publish the customer communication draft for the 47 strategic accounts
-- [ ] Confirm Saturday 10 PM-2 AM cutover staffing and war-room ownership
-
-Best regards,
-Program Lead, Aurora Identity Migration`;
-
-const BONUS_REQUIRED_SECTIONS = [
-  "Executive Summary",
-  "Current Status",
-  "Root Cause Analysis",
-  "Impact Assessment",
-  "Decision Required",
-  "Recovery Plan",
-  "Revised Timeline",
-  "Risk Mitigation",
-  "Next Steps",
-];
-
-const BONUS_PROMPT_CHECKS: BonusCheck[] = [
-  {
-    label: "executive stakeholder email",
-    test: (text) =>
-      /\b(email|update|memo|status)\b/i.test(text) &&
-      /\b(stakeholder|executive|leadership)\b/i.test(text),
-  },
-  {
-    label: "subject line instruction",
-    test: (text) => /\bsubject\b/i.test(text),
-  },
-  {
-    label: "explicit sections or headings",
-    test: (text) =>
-      countNamedSections(text) >= 4 ||
-      /\b(section|heading|structured output|explicit sections?)\b/i.test(text),
-  },
-  {
-    label: "quantified facts and dates",
-    test: (text) =>
-      /\b(exact|specific|quantified|numeric|numbers?|metrics|dates?)\b/i.test(text) ||
-      /(38,?000|6,?200|71%|92%|99\.95%|180k|95k|47 strategic|may 15|june 9)/i.test(text),
-  },
-  {
-    label: "timeline or milestone table",
-    test: (text) => /\b(table|timeline|milestone)\b/i.test(text),
-  },
-  {
-    label: "risk mitigation and rollback",
-    test: (text) => /\b(risk|mitigation|rollback|fallback|monitoring)\b/i.test(text),
-  },
-  {
-    label: "compliance and security requirements",
-    test: (text) => /\b(gdpr|compliance|security|mfa|retention)\b/i.test(text),
-  },
-  {
-    label: "decision request and deadline",
-    test: (text) =>
-      /\b(decision|approve|go\/?no-go|recommendation|deadline)\b/i.test(text) ||
-      /\b(wednesday|4 ?pm)\b/i.test(text),
-  },
-  {
-    label: "customer communications",
-    test: (text) =>
-      /\b(customer success|strategic accounts?|customer communication|outreach)\b/i.test(text),
-  },
-  {
-    label: "phased rollout and maintenance window",
-    test: (text) =>
-      /\b(phased rollout|regional rollout|maintenance window|change freeze|cutover window)\b/i.test(text),
-  },
-  {
-    label: "professional tone",
-    test: (text) => /\b(professional|clear|concise|executive tone)\b/i.test(text),
-  },
-];
-
-const BONUS_OUTPUT_FACT_CHECKS: BonusCheck[] = [
-  {
-    label: "subject line",
-    test: (text) => /^subject:\s*aurora identity migration/i.test(text.trim()),
-  },
-  {
-    label: "delay and revised cutover",
-    test: (text) =>
-      /\b3 weeks behind\b/i.test(text) &&
-      /\bmay 15\b/i.test(text) &&
-      /\bjune 9\b/i.test(text),
-  },
-  {
-    label: "SCIM root cause and affected regions",
-    test: (text) =>
-      /\bokta\b/i.test(text) &&
-      /\bscim\b/i.test(text) &&
-      /\bschema change\b/i.test(text) &&
-      /\bduplicate\w*\b/i.test(text) &&
-      /\b4 of 12 regions\b/i.test(text),
-  },
-  {
-    label: "account scope and regional coverage",
-    test: (text) =>
-      /38,?000/.test(text) &&
-      /6,?200/.test(text) &&
-      /\b(us|eu|apac)\b/i.test(text),
-  },
-  {
-    label: "reliability and test metrics",
-    test: (text) =>
-      /99\.95%/.test(text) &&
-      /\b9\s+sev-2\b/i.test(text) &&
-      /71%/.test(text) &&
-      /92%/.test(text),
-  },
-  {
-    label: "compliance and security requirements",
-    test: (text) =>
-      /\bgdpr\b/i.test(text) &&
-      /\beu\b/i.test(text) &&
-      /\blog retention\b/i.test(text) &&
-      /\bmfa\b/i.test(text),
-  },
-  {
-    label: "budget and consultant tradeoff",
-    test: (text) =>
-      /\b180k\b/i.test(text) &&
-      /\b95k\b/i.test(text) &&
-      /\bconsultant\b/i.test(text),
-  },
-  {
-    label: "customer communication scope",
-    test: (text) =>
-      /\b47 strategic accounts?\b/i.test(text) ||
-      (/\b47\b/.test(text) && /\bcustomer/i.test(text)),
-  },
-  {
-    label: "decision deadline and maintenance window",
-    test: (text) =>
-      /\bwednesday\b/i.test(text) &&
-      /\b4 ?pm\b/i.test(text) &&
-      /\bsaturday\b/i.test(text) &&
-      /\b10 ?pm\b/i.test(text) &&
-      /\b2 ?am\b/i.test(text),
-  },
-  {
-    label: "phased rollout recommendation",
-    test: (text) => /\bphased rollout\b/i.test(text),
-  },
-  {
-    label: "timeline table",
-    test: (text) =>
-      /\|.*milestone.*original date.*revised date.*\|/i.test(text) ||
-      (/\bmilestone\b/i.test(text) && /\brevised date\b/i.test(text)),
-  },
-  {
-    label: "checklist-style next steps",
-    test: (text) => /\[[ xX]?\]/.test(text) || /\bnext steps:\b/i.test(text),
-  },
-];
-
-const BONUS_EMAIL_STRUCTURE_CHECKS: BonusCheck[] = [
-  {
-    label: "salutation",
-    test: (text) => /\bdear stakeholders\b/i.test(text),
-  },
-  {
-    label: "closing",
-    test: (text) => /\b(best regards|regards|sincerely)\b/i.test(text),
-  },
-  {
-    label: "multiple paragraphs",
-    test: (text) =>
-      text
-        .split(/\n\s*\n/)
-        .filter((paragraph) => paragraph.trim().length > 0).length >= 4,
-  },
-  {
-    label: "table formatting",
-    test: (text) => /\|.+\|/.test(text),
-  },
-  {
-    label: "checklist formatting",
-    test: (text) => /\[[ xX]?\]/.test(text),
-  },
-];
 
 // ── LLM timeout wrapper ───────────────────────────────────────────────────────
 
@@ -314,17 +76,13 @@ function scoreChecks(text: string, checks: BonusCheck[]): number {
   return checks.length === 0 ? 1 : matched / checks.length;
 }
 
-function countNamedSections(text: string): number {
+function countNamedSections(text: string, sections: string[]): number {
   const normalized = text.toLowerCase();
-  return BONUS_REQUIRED_SECTIONS.filter((section) =>
-    normalized.includes(section.toLowerCase())
-  ).length;
+  return sections.filter((s) => normalized.includes(s.toLowerCase())).length;
 }
 
-function scoreNamedSections(text: string): number {
-  return BONUS_REQUIRED_SECTIONS.length === 0
-    ? 1
-    : countNamedSections(text) / BONUS_REQUIRED_SECTIONS.length;
+function scoreNamedSections(text: string, sections: string[]): number {
+  return sections.length === 0 ? 1 : countNamedSections(text, sections) / sections.length;
 }
 
 async function getOrComputeCached<T>(
@@ -677,9 +435,6 @@ function getStructuredBaselinePrompt(): string {
   return "Solve this problem.";
 }
 
-function getBonusBaselineMetaPrompt(): string {
-  return "Write a prompt that turns the scenario into an executive stakeholder update.";
-}
 
 async function scoreImproveOutcome(
   round: Round,
@@ -779,10 +534,10 @@ async function scoreStructuredOutcome(
   };
 }
 
-async function scoreBonusOutput(finalOutput: string) {
-  const outputCoverageScore = scoreBonusOutputCoverage(finalOutput);
-  const outputStructureScore = scoreBonusOutputStructure(finalOutput);
-  const similarityScore = await getSimilarity(finalOutput, BONUS_TARGET_OUTPUT);
+async function scoreBonusOutput(finalOutput: string, config: BonusEvalConfig) {
+  const outputCoverageScore = scoreBonusOutputCoverage(finalOutput, config);
+  const outputStructureScore = scoreBonusOutputStructure(finalOutput, config);
+  const similarityScore = await getSimilarity(finalOutput, config.targetOutput);
   const taskOutputScore =
     0.5 * outputCoverageScore +
     0.3 * outputStructureScore +
@@ -911,13 +666,12 @@ async function getStructuredBaseline(round: Round) {
   );
 }
 
-async function getBonusBaseline(basePrompt: string) {
-  const baselineMetaPrompt = getBonusBaselineMetaPrompt();
+async function getBonusBaseline(basePrompt: string, config: BonusEvalConfig) {
   return getOrComputeCached(
-    cacheKey("baseline", "BONUS", baselineMetaPrompt, basePrompt),
+    cacheKey("baseline", "BONUS", config.baselineMetaPrompt, basePrompt),
     async () => {
       const baselineCompiledPrompt = await compileMetaPrompt({
-        metaPrompt: baselineMetaPrompt,
+        metaPrompt: config.baselineMetaPrompt,
         basePrompt,
       });
       const baselineOutput = await runPromptWithContext(
@@ -925,9 +679,9 @@ async function getBonusBaseline(basePrompt: string) {
         basePrompt,
         "Scenario"
       );
-      const scored = await scoreBonusOutput(baselineOutput);
+      const scored = await scoreBonusOutput(baselineOutput, config);
       return {
-        baselineMetaPrompt,
+        baselineMetaPrompt: config.baselineMetaPrompt,
         baselineCompiledPrompt,
         baselineOutput,
         baselineScore: scored.taskOutputScore,
@@ -1031,24 +785,24 @@ function normalizeCompiledPrompt(text: string): string {
     .trim();
 }
 
-function scoreBonusPromptCoverage(prompt: string): number {
+function scoreBonusPromptCoverage(prompt: string, config: BonusEvalConfig): number {
   return clamp(
-    0.65 * scoreChecks(prompt, BONUS_PROMPT_CHECKS) +
-      0.35 * scoreNamedSections(prompt)
+    0.65 * scoreChecks(prompt, config.promptChecks) +
+      0.35 * scoreNamedSections(prompt, config.requiredSections)
   );
 }
 
-function scoreBonusOutputCoverage(output: string): number {
+function scoreBonusOutputCoverage(output: string, config: BonusEvalConfig): number {
   return clamp(
-    0.45 * scoreNamedSections(output) +
-      0.35 * scoreChecks(output, BONUS_OUTPUT_FACT_CHECKS) +
-      0.2 * scoreChecks(output, BONUS_EMAIL_STRUCTURE_CHECKS)
+    0.45 * scoreNamedSections(output, config.requiredSections) +
+      0.35 * scoreChecks(output, config.outputFactChecks) +
+      0.2 * scoreChecks(output, config.structureChecks)
   );
 }
 
-function scoreBonusOutputStructure(output: string): number {
+function scoreBonusOutputStructure(output: string, config: BonusEvalConfig): number {
   return clamp(
-    0.5 * scoreChecks(output, BONUS_EMAIL_STRUCTURE_CHECKS) +
+    0.5 * scoreChecks(output, config.structureChecks) +
       0.5 * evaluateStructure(output)
   );
 }
@@ -1099,9 +853,11 @@ export async function compileMetaPrompt({
 export async function evaluateMetaBonusRound({
   metaPrompt,
   basePrompt,
+  evalConfig,
 }: {
   metaPrompt: string;
   basePrompt: string;
+  evalConfig: BonusEvalConfig;
 }) {
   try {
     if (!metaPrompt) {
@@ -1114,10 +870,10 @@ export async function evaluateMetaBonusRound({
 
     const compiledPrompt = await compileMetaPrompt({ metaPrompt, basePrompt });
     const finalOutput = await runPromptWithContext(compiledPrompt, basePrompt, "Scenario");
-    const metaCoverageScore = scoreBonusPromptCoverage(metaPrompt);
-    const compiledPromptCoverageScore = scoreBonusPromptCoverage(compiledPrompt);
-    const outputScores = await scoreBonusOutput(finalOutput);
-    const baseline = await getBonusBaseline(basePrompt);
+    const metaCoverageScore = scoreBonusPromptCoverage(metaPrompt, evalConfig);
+    const compiledPromptCoverageScore = scoreBonusPromptCoverage(compiledPrompt, evalConfig);
+    const outputScores = await scoreBonusOutput(finalOutput, evalConfig);
+    const baseline = await getBonusBaseline(basePrompt, evalConfig);
     const baselineGate = scoreBaselineGate(
       outputScores.taskOutputScore,
       baseline.baselineScore,

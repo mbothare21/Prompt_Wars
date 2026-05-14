@@ -48,6 +48,7 @@ export type Round = {
   constraints?: unknown;
   promptParts?: PromptPart[];
   basePrompt?: string;
+  bonusEvalConfig?: BonusEvalConfig;
 };
 
 export type PromptPart = {
@@ -55,6 +56,20 @@ export type PromptPart = {
   text: string;
   options: string[];
   answer: string;
+};
+
+export type BonusCheck = {
+  label: string;
+  test: (text: string) => boolean;
+};
+
+export type BonusEvalConfig = {
+  targetOutput: string;
+  requiredSections: string[];
+  promptChecks: BonusCheck[];
+  outputFactChecks: BonusCheck[];
+  structureChecks: BonusCheck[];
+  baselineMetaPrompt: string;
 };
 
 export type GameSession = {
