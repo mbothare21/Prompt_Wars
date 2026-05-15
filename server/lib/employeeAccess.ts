@@ -3,7 +3,7 @@ import { connectDB } from "./mongodb";
 
 type EmployeeDirectoryRecord = {
   Name?: string;
-  Mail?: string;
+  Email?: string;
   location?: string;
 };
 
@@ -100,18 +100,18 @@ async function findEmployeeRecordByEmail(
   const db = conn.connection.getClient().db(employeeDbName);
   const emailMatcher = new RegExp(`^${escapeRegex(email)}$`, "i");
   const record = (await db.collection(employeeCollectionName).findOne(
-    { Mail: emailMatcher },
+    { Email: emailMatcher },
     {
       projection: {
         _id: 0,
         Name: 1,
-        Mail: 1,
+        Email: 1,
         location: 1,
       },
     }
   )) as EmployeeDirectoryRecord | null;
 
-  return record?.Mail ? record : null;
+  return record?.Email ? record : null;
 }
 
 export async function validateEmployeeIdentity(name: string, email?: string) {
