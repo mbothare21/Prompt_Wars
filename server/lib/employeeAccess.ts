@@ -2,8 +2,8 @@ import { validateAdminCredentials } from "@/lib/admin";
 import { connectDB } from "./mongodb";
 
 type EmployeeDirectoryRecord = {
-  empName?: string;
-  empMail?: string;
+  Name?: string;
+  Mail?: string;
   location?: string;
 };
 
@@ -22,7 +22,7 @@ function normalizeName(name: string): string {
     })
     .join("");
   return noDiacritics
-    .replace(/[‘’’ʼ`]/g, "") // O’Brien → OBrien
+    .replace(/['''ʼ`]/g, "") // O'Brien → OBrien
     .replace(/\./g, "")      // Jr.→Jr, A.→A
     .replace(/-/g, " ")      // Mary-Jane → Mary Jane
     .replace(/\s+/g, " ")
@@ -100,18 +100,18 @@ async function findEmployeeRecordByEmail(
   const db = conn.connection.getClient().db(employeeDbName);
   const emailMatcher = new RegExp(`^${escapeRegex(email)}$`, "i");
   const record = (await db.collection(employeeCollectionName).findOne(
-    { empMail: emailMatcher },
+    { Mail: emailMatcher },
     {
       projection: {
         _id: 0,
-        empName: 1,
-        empMail: 1,
+        Name: 1,
+        Mail: 1,
         location: 1,
       },
     }
   )) as EmployeeDirectoryRecord | null;
 
-  return record?.empMail ? record : null;
+  return record?.Mail ? record : null;
 }
 
 export async function validateEmployeeIdentity(name: string, email?: string) {
@@ -143,7 +143,7 @@ export async function validateEmployeeIdentity(name: string, email?: string) {
 
   try {
     const employee = await findEmployeeRecordByEmail(trimmedEmail);
-    if (!employee?.empName || !namesMatch(employee.empName, trimmedName)) {
+    if (!employee?.Name || !namesMatch(employee.Name, trimmedName)) {
       return {
         ok: false,
         error: "This name and email pair does not match the employee directory.",
