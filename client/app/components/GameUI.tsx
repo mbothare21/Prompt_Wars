@@ -1503,64 +1503,68 @@ export default function GameUI() {
 
             {/* --- ADMIN TAB 2: LEADERBOARD --- */}
             {adminTab === "leaderboard" && (
-              <div className="bg-black/60 p-6 rounded border border-cyan-900/30 shadow-[inset_0_0_30px_rgba(0,0,0,0.5)]">
-                <h2 className="text-lg font-mono font-bold text-cyan-500 mb-6 uppercase tracking-widest border-b border-cyan-900/50 pb-2">Leaderboard</h2>
-                <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                  {filteredAdminPlayers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
-                      <span className="text-3xl mb-3 opacity-50">📡</span>
-                      <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No players yet.</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto rounded border border-slate-800">
-                      <table className="w-full text-left border-collapse font-mono text-sm">
-                        <thead className="bg-slate-900/80 sticky top-0 z-10">
-                          <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
-                            <th className="p-4 font-bold">Name</th>
-                            <th className="p-4 font-bold text-center">Location</th>
-                            <th className="p-4 font-bold text-center">Rooms</th>
-                            <th className="p-4 font-bold text-center">Duration</th>
-                            <th className="p-4 font-bold text-center">Precision</th>
-                            <th className="p-4 font-bold text-center">Total Attempts</th>
-                            <th className="p-4 font-bold text-center">Status</th>
-                            <th className="p-4 font-bold text-center">Responses</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50 bg-black/40">
-                          {filteredAdminPlayers.map((p, idx) => {
-                            const statusCfg = GAME_STATUS_CONFIG[p.gameStatus ?? ""] ?? { label: "In Progress", color: "text-slate-500" };
-                            return (
-                              <tr key={p.playerId} className="hover:bg-cyan-950/20 transition-colors group">
-                                <td className="p-4">
-                                  <div className="font-bold text-slate-300 flex items-center gap-3">
-                                    <span className="text-cyan-800 w-6 text-right">0{idx + 1}</span>
-                                    <span className="group-hover:text-cyan-300 transition-colors">{p.name}</span>
-                                  </div>
-                                  {p.email && <div className="text-[10px] text-slate-600 ml-9 mt-1">{p.email}</div>}
-                                </td>
-                                <td className="p-4 text-slate-500 text-center text-xs font-mono">{p.location ?? "—"}</td>
-                                <td className="p-4 text-slate-400 text-center">{p.roundsPlayed}</td>
-                                <td className="p-4 text-slate-400 text-center">{p.timeTakenSec}s</td>
-                                <td className="p-4 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
-                                <td className="p-4 text-slate-500 text-center">{p.attemptsUsed}</td>
-                                <td className={`p-4 font-bold text-center text-xs uppercase tracking-wider ${statusCfg.color}`}>{statusCfg.label}</td>
-                                <td className="p-4 text-center">
-                                  {p.email && (
-                                    <button
-                                      onClick={() => void downloadPlayerResponses(p.email!)}
-                                      className="bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/50 text-cyan-300 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all hover:shadow-[0_0_10px_rgba(34,211,238,0.2)]"
-                                    >
-                                      Download
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+              <div className="bg-black/60 p-8 rounded-xl border border-slate-700 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
+                <div className="screen-glare absolute inset-0 rounded-xl" />
+                <div className="relative z-10">
+                  <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
+                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Operative Roster
+                  </h2>
+                  <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                    {filteredAdminPlayers.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
+                        <span className="text-3xl mb-3 opacity-50">📡</span>
+                        <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No operatives registered.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto rounded border border-slate-800">
+                        <table className="w-full text-left border-collapse font-mono text-sm">
+                          <thead className="bg-slate-900/80 sticky top-0 z-10">
+                            <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
+                              <th className="p-3 font-bold w-10">#</th>
+                              <th className="p-3 font-bold">Operative</th>
+                              <th className="p-3 font-bold text-center">Location</th>
+                              <th className="p-3 font-bold text-center">Sectors</th>
+                              <th className="p-3 font-bold text-center">Duration</th>
+                              <th className="p-3 font-bold text-center">Precision</th>
+                              <th className="p-3 font-bold text-center">Attempts</th>
+                              <th className="p-3 font-bold text-center">Status</th>
+                              <th className="p-3 font-bold text-center">Responses</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 bg-black/40">
+                            {filteredAdminPlayers.map((p, idx) => {
+                              const statusCfg = GAME_STATUS_CONFIG[p.gameStatus ?? ""] ?? { label: "In Progress", color: "text-slate-500" };
+                              return (
+                                <tr key={p.playerId} className="hover:bg-cyan-950/20 transition-colors group">
+                                  <td className="p-3 text-cyan-800 font-bold">{String(idx + 1).padStart(2, "0")}</td>
+                                  <td className="p-3">
+                                    <span className="font-bold text-slate-300 group-hover:text-cyan-300 transition-colors">{p.name}</span>
+                                    {p.email && <div className="text-[10px] text-slate-600 mt-0.5">{p.email}</div>}
+                                  </td>
+                                  <td className="p-3 text-slate-500 text-center text-xs font-mono">{p.location ?? "—"}</td>
+                                  <td className="p-3 text-slate-400 text-center">{p.roundsPlayed}</td>
+                                  <td className="p-3 text-slate-400 text-center">{formatTime(p.timeTakenSec)}</td>
+                                  <td className="p-3 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
+                                  <td className="p-3 text-slate-500 text-center">{p.attemptsUsed}</td>
+                                  <td className={`p-3 font-bold text-center text-xs uppercase tracking-wider ${statusCfg.color}`}>{statusCfg.label}</td>
+                                  <td className="p-3 text-center">
+                                    {p.email && (
+                                      <button
+                                        onClick={() => void downloadPlayerResponses(p.email!)}
+                                        className="bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/50 text-cyan-300 px-3 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all hover:shadow-[0_0_10px_rgba(34,211,238,0.2)]"
+                                      >
+                                        Download
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
