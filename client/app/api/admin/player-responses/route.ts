@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email")?.trim().toLowerCase();
+  const email = searchParams.get("email")?.trim();
   if (!email) {
     return Response.json({ error: "Email is required" }, { status: 400 });
   }
@@ -35,7 +35,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const doc = (await PlayerModel.findOne({ email })
+    const emailFilter = { email: { $regex: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } };
+    const doc = (await PlayerModel.findOne(emailFilter)
       .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
       .lean()) as RawAdminPlayerDoc | null;
 

@@ -4,7 +4,7 @@ import { connectDB } from "./mongodb";
 type EmployeeDirectoryRecord = {
   Name?: string;
   Email?: string;
-  location?: string;
+  Location?: string;
 };
 
 const DEFAULT_COMPANY_EMAIL_DOMAIN = "calfus.com";
@@ -106,7 +106,7 @@ async function findEmployeeRecordByEmail(
         _id: 0,
         Name: 1,
         Email: 1,
-        location: 1,
+        Location: 1,
       },
     }
   )) as EmployeeDirectoryRecord | null;
@@ -150,7 +150,7 @@ export async function validateEmployeeIdentity(name: string, email?: string) {
       };
     }
 
-    return { ok: true, isAdmin: false, location: employee.location };
+    return { ok: true, isAdmin: false, location: employee.Location };
   } catch (error) {
     console.error("[employeeAccess] employee directory lookup failed:", error);
     return {
