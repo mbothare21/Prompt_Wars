@@ -20,25 +20,25 @@ const ROUND_1_QUESTION_SETS: PromptPart[][] = [
         {
             id: "q1",
             text: "You are acting as a strategic advisor to a rapidly scaling startup operating in a highly competitive and fast-evolving digital ecosystem. Your goal is to help the team identify practical, high-impact actions that can improve long-term user engagement and retention.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Role Prompting"
         },
         {
             id: "q2",
             text: "Before arriving at your final answer, take a moment to carefully analyze the problem from multiple angles. Consider user psychology, product design, behavioral patterns, and business constraints. Internally reason through different possible approaches, weigh trade-offs, and refine your thinking before presenting a response.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Chain of Thought"
         },
         {
             id: "q3",
             text: "To guide your thinking, review the following reference patterns:\nCase A\nInput: Reduce churn\nOutput: Improve onboarding experience, provide proactive support during the first week, and personalize user journeys based on behavior\nCase B\nInput: Increase conversions\nOutput: Simplify checkout flow, introduce trust signals such as reviews, and optimize pricing presentation for clarity\nCase C\nInput: Improve feature adoption\nOutput: Introduce contextual tooltips, guide users with walkthroughs, and highlight value through real-time feedback",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Few-Shot Prompting"
         },
         {
             id: "q4",
             text: "Now address the following scenario:\nProblem: Users sign up for productivity applications with high initial intent but gradually lose interest after a few days, resulting in low long-term engagement and retention.\n\nWhile responding, keep the following in mind:\n- Ensure your response is organized in a logical and easy-to-follow manner\n- Focus on practical, actionable strategies rather than abstract ideas\n- Keep the explanation concise, but do not oversimplify important details\n- Avoid unnecessary jargon unless absolutely required\n- Balance creativity with realism in your suggestions\n\nAdditionally, consider edge cases such as:\n- Users who drop off after initial onboarding\n- Users who engage inconsistently\n- Users who find the product useful but not habit-forming\n\nYour response should:\n- Clearly present key strategies in a structured format\n- Be easy to scan and understand at a glance\n- Maintain clarity and coherence throughout\n- Conclude with a short, impactful closing line that reinforces the overall strategy",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Output Constraints"
         }
     ],
@@ -48,25 +48,25 @@ const ROUND_1_QUESTION_SETS: PromptPart[][] = [
         {
             id: "q1",
             text: "You are a senior product consultant helping a subscription-based SaaS company improve user retention while balancing business goals, technical feasibility, and customer experience.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Role Prompting"
         },
         {
             id: "q2",
             text: "Before answering, think carefully about possible causes, business impact, implementation effort, and long-term effects. Consider multiple perspectives before deciding on the strongest recommendation.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Chain of Thought"
         },
         {
             id: "q3",
             text: "Consider the following examples before responding:\n\nExample A\nProblem: Low onboarding completion\nRecommendation: Simplify setup and introduce guided walkthroughs.\n\nExample B\nProblem: High churn\nRecommendation: Improve engagement through personalized reminders.\n\nExample C\nProblem: Poor feature adoption\nRecommendation: Add contextual tips and product education.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Few-Shot Prompting"
         },
         {
             id: "q4",
             text: "Your response should:\n- Stay under 120 words\n- Use bullet points\n- Avoid technical jargon\n- End with one practical recommendation",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Output Constraints"
         }
     ],
@@ -76,25 +76,25 @@ const ROUND_1_QUESTION_SETS: PromptPart[][] = [
         {
             id: "q1",
             text: "You are helping the leadership team of a healthcare startup improve patient engagement while ensuring recommendations remain practical and easy to implement.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Role Prompting"
         },
         {
             id: "q2",
             text: "Review these examples before responding:\n\nCase A\nProblem: Low customer trust\nRecommendation: Add testimonials and transparent pricing.\n\nCase B\nProblem: High abandonment\nRecommendation: Reduce friction during onboarding.\n\nCase C\nProblem: Poor retention\nRecommendation: Introduce reminders and personalized nudges.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Few-Shot Prompting"
         },
         {
             id: "q3",
             text: "Think through the problem step-by-step before answering. Consider causes, trade-offs, risks, and practical implications before finalizing your response.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
-            answer: "Step-by-Step Reasoning"
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
+            answer: "Chain of Thought"
         },
         {
             id: "q4",
             text: "Do not use vague language, avoid technical jargon, and avoid repeating the problem statement in your answer.",
-            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Step-by-Step Reasoning", "Negative Prompting"],
+            options: ["Role Prompting", "Chain of Thought", "Few-Shot Prompting", "Output Constraints", "Zero-Shot Prompting", "Persona Prompting", "Negative Prompting"],
             answer: "Negative Prompting"
         }
     ]
