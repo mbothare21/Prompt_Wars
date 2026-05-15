@@ -12,8 +12,42 @@ const DEFAULT_EMPLOYEE_DB_NAME = "promptwars";
 const DEFAULT_EMPLOYEE_COLLECTION_NAME = "employeeDetails";
 const DEFAULT_ATTEMPT_GAME_BYPASS_LOCAL_PART = "attempt-game";
 
-function normalizeName(name: string) {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
+function normalizeName(name: string): string {
+  // Decompose accented characters (NFD), then filter out all combining marks
+  // (U+0300–U+036F) so é→e, ñ→n, etc. — without embedding raw Unicode in source.
+  const noDiacritics = Array.from(name.trim().toLowerCase().normalize("NFD"))
+    .filter((c) => {
+      const cp = c.codePointAt(0) ?? 0;
+      return cp < 0x0300 || cp > 0x036f;
+    })
+    .join("");
+  return noDiacritics
+    .replace(/[‘’’ʼ`]/g, "") // O’Brien → OBrien
+    .replace(/\./g, "")      // Jr.→Jr, A.→A
+    .replace(/-/g, " ")      // Mary-Jane → Mary Jane
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Returns true if the name the user typed plausibly matches the DB name.
+// Allows middle names/initials stored in the DB to be omitted by the user,
+// while still requiring first word and last word to match exactly.
+function namesMatch(dbName: string, inputName: string): boolean {
+  const db = normalizeName(dbName);
+  const input = normalizeName(inputName);
+
+  if (db === input) return true;
+
+  const dbWords = db.split(" ").filter(Boolean);
+  const inputWords = input.split(" ").filter(Boolean);
+  if (inputWords.length < 2 || dbWords.length < 2) return false;
+
+  const dbWordSet = new Set(dbWords);
+  return (
+    dbWords[0] === inputWords[0] &&
+    dbWords[dbWords.length - 1] === inputWords[inputWords.length - 1] &&
+    inputWords.every((w) => dbWordSet.has(w))
+  );
 }
 
 function normalizeEmail(email: string) {
@@ -27,9 +61,7 @@ function getCompanyEmailDomain() {
 }
 
 function getEmployeeDbName() {
-  return (
-    process.env.EMPLOYEE_DB_NAME?.trim() || DEFAULT_EMPLOYEE_DB_NAME
-  );
+  return process.env.EMPLOYEE_DB_NAME?.trim() || DEFAULT_EMPLOYEE_DB_NAME;
 }
 
 function getEmployeeCollectionName() {
@@ -111,10 +143,7 @@ export async function validateEmployeeIdentity(name: string, email?: string) {
 
   try {
     const employee = await findEmployeeRecordByEmail(trimmedEmail);
-    if (
-      !employee?.empName ||
-      normalizeName(employee.empName) !== normalizeName(trimmedName)
-    ) {
+    if (!employee?.empName || !namesMatch(employee.empName, trimmedName)) {
       return {
         ok: false,
         error: "This name and email pair does not match the employee directory.",
