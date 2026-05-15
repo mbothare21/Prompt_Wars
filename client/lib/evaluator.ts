@@ -884,12 +884,12 @@ export async function evaluateMetaBonusRound({
     );
 
     const finalScore =
-      0.3 * metaCoverageScore +
-      0.3 * compiledPromptCoverageScore +
-      0.1 * outputScores.outputCoverageScore +
-      0.1 * outputScores.outputStructureScore +
-      0.05 * outputScores.similarityScore +
-      0.15 * baselineGate.baselineGateScore;
+      0.40 * metaCoverageScore +
+      0.30 * compiledPromptCoverageScore +
+      0.10 * outputScores.outputCoverageScore +
+      0.07 * outputScores.outputStructureScore +
+      0.03 * outputScores.similarityScore +
+      0.10 * baselineGate.baselineGateScore;
 
     return {
       compiledPrompt,

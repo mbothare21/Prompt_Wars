@@ -213,9 +213,24 @@ export async function POST(req: Request) {
                 "compiledPrompt" in result ? result.compiledPrompt : undefined,
             }
           : prompt,
-      output: ("output" in result ? result.output : undefined)
-        ?? ("finalOutput" in result ? result.finalOutput : undefined)
-        ?? "",
+      output: round.type === "CLASSIFY"
+        ? (() => {
+            const cr = result as { correct?: number; total?: number };
+            return JSON.stringify({
+              correct: cr.correct ?? 0,
+              total: cr.total ?? 0,
+              details: (round.promptParts ?? []).map((p) => ({
+                id: p.id,
+                text: p.text,
+                chosen: (answers ?? {})[p.id] ?? null,
+                correct: p.answer,
+                isCorrect: (answers ?? {})[p.id] === p.answer,
+              })),
+            });
+          })()
+        : ("output" in result ? result.output : undefined)
+            ?? ("finalOutput" in result ? result.finalOutput : undefined)
+            ?? "",
     },
   ];
 

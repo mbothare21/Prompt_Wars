@@ -220,6 +220,8 @@ export default function GameUI() {
   const [stats, setStats] = useState({
     roundsCompleted: 0,
     accuracies: [] as number[],
+    attemptsPerRound: {} as Record<number, number>,
+    terminalStatus: null as string | null,
     bonusCompleted: false,
     lastFinalScore: null as number | null,
     highScoreBonus: false,
@@ -305,11 +307,20 @@ export default function GameUI() {
               ? "No attempts remaining."
               : "Game over."
         );
+        setStats((s) => ({
+          ...s,
+          terminalStatus: data.reason === "TIME_UP"
+            ? "TIME_OVER"
+            : s.roundsCompleted >= MAIN_ROUNDS
+              ? "COMPLETED"
+              : "FAILED",
+        }));
         setPhase("finished");
         return;
       }
       if (data.status === "DISQUALIFIED") {
         setMessage("Disqualified.");
+        setStats((s) => ({ ...s, terminalStatus: "DISQUALIFIED" }));
         setPhase("finished");
         return;
       }
@@ -317,6 +328,7 @@ export default function GameUI() {
         setStats((s) => ({
           ...s,
           bonusCompleted: Boolean(data.bonusUnlocked),
+          terminalStatus: "COMPLETED_WITH_BONUS",
         }));
         setPhase("finished");
         return;
@@ -466,6 +478,7 @@ export default function GameUI() {
         const data = await res.json();
         if (data.status === "DISQUALIFIED") {
           alert("DISQUALIFIED: 3 violations reached. You have been removed from the game.");
+          setStats((prev) => ({ ...prev, terminalStatus: "DISQUALIFIED" }));
           finishGame("Disqualified due to violations.");
           return;
         }
@@ -526,6 +539,7 @@ export default function GameUI() {
     }
     if (timeLeftSec === 0 && allowTimeUpRef.current) {
       allowTimeUpRef.current = false;
+      setStats((prev) => ({ ...prev, terminalStatus: "TIME_OVER" }));
       finishGame("Time is up.");
     }
   }, [timeLeftSec, phase, finishGame]);
@@ -834,6 +848,7 @@ export default function GameUI() {
       const status = data.status as string | undefined;
 
       if (status === "GAME_OVER" && data.reason === "TIME_UP") {
+        setStats((prev) => ({ ...prev, terminalStatus: "TIME_OVER" }));
         finishGame("Life support depleted. Time is up.");
         return;
       }
@@ -855,6 +870,10 @@ export default function GameUI() {
 
       if (status === "NO_ATTEMPTS_LEFT") {
         setError("Access Denied. Lockout engaged.");
+        setStats((prev) => ({
+          ...prev,
+          terminalStatus: roundNumber >= TOTAL_ROUNDS ? "COMPLETED" : "FAILED",
+        }));
         finishGame();
         return;
       }
@@ -865,10 +884,12 @@ export default function GameUI() {
         const nextAccuracies = [...prev.accuracies];
         const currentBest = nextAccuracies[roundNumber - 1] ?? 0;
         nextAccuracies[roundNumber - 1] = Math.max(currentBest, finalScore);
-
+        const attThisRound = (data.attemptsThisRound as number | undefined)
+          ?? ((prev.attemptsPerRound[roundNumber] ?? 0) + 1);
         return {
           ...prev,
           accuracies: nextAccuracies,
+          attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
           lastFinalScore: finalScore,
         };
       });
@@ -910,6 +931,7 @@ export default function GameUI() {
           bonusCompleted: Boolean(data.bonusUnlocked),
           highScoreBonus: Boolean(data.highScoreBonus),
           lastFinalScore: finalScore,
+          terminalStatus: "COMPLETED_WITH_BONUS",
         }));
         setPhase("finished");
         setMessage("Facility Escaped. Uplink Terminated.");
@@ -985,40 +1007,129 @@ export default function GameUI() {
     };
 
     let roundsHtml = "";
-    const sortedRounds = [...(p.rounds || [])].sort((a, b) => a.round - b.round);
-    for (const r of sortedRounds) {
-      const pct = Math.round(r.score * 100);
-      const label = ROUND_TYPE_LABELS[r.round] ?? "Unknown";
-      // Round 1 with a single attempt means the player got it right immediately — no tip
-      const tip = (r.round === 1 && r.attempts <= 1)
+    const sortedRounds = [...(p.rounds || [])].sort(
+      (a, b) => a.round - b.round || (a.attempts ?? 0) - (b.attempts ?? 0)
+    );
+
+    type ClassifyDetail = { id: string; text: string; chosen: string | null; correct: string; isCorrect: boolean };
+    type ClassifyOutput = { correct: number; total: number; details: ClassifyDetail[] };
+    const parseClassifyOutput = (output: string | undefined): ClassifyOutput | null => {
+      try { return output ? JSON.parse(output) as ClassifyOutput : null; } catch { return null; }
+    };
+
+    // ── Round 1 (CLASSIFY) — grouped section ─────────────────────────────────
+    const r1Entries = sortedRounds.filter((r) => r.round === 1);
+    const otherRounds = sortedRounds.filter((r) => r.round !== 1);
+
+    if (r1Entries.length > 0) {
+      const singleAttempt = r1Entries.length === 1;
+      const worstAttempt = r1Entries.reduce((w, r) => r.score < w.score ? r : w, r1Entries[0]);
+      // Single attempt passes at 100% (threshold is 1.0); multiple attempts show the worst score
+      const displayPct = singleAttempt ? 100 : Math.round(worstAttempt.score * 100);
+      const r1ScoreColor = displayPct >= 70 ? "#16a34a" : "#dc2626";
+      const r1Label = ROUND_TYPE_LABELS[1] ?? "Signal Scan";
+      const r1Tip = singleAttempt
         ? null
-        : (tips?.[r.round] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.");
+        : (tips?.[1] ?? IMPROVEMENT_TIPS_HTML[r1Label] ?? "Review classification boundaries carefully.");
+
+      // Show only the worst attempt (or single attempt); not all attempts
+      const displayAttempt = singleAttempt ? r1Entries[0] : worstAttempt;
+      const parsed = parseClassifyOutput(displayAttempt.output);
+
+      let choicesHtml = "";
+      if (parsed?.details?.length) {
+        choicesHtml = parsed.details.map((d: ClassifyDetail) => `
+          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:6px 8px;border-radius:4px;background:${d.isCorrect ? "#f0fdf4" : "#fef2f2"};border:1px solid ${d.isCorrect ? "#bbf7d0" : "#fecaca"};">
+            <span style="font-size:12px;flex-shrink:0;margin-top:1px;">${d.isCorrect ? "&#10003;" : "&#10007;"}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;color:#64748b;margin-bottom:2px;">${d.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+              <div style="font-size:12px;">
+                <span style="color:${d.isCorrect ? "#15803d" : "#b91c1c"};font-weight:600;">${(d.chosen ?? "No answer").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>
+                ${!d.isCorrect ? ` <span style="color:#94a3b8;font-size:11px;">&rarr; Correct: <strong style="color:#15803d;">${d.correct.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</strong></span>` : ""}
+              </div>
+            </div>
+          </div>`).join("");
+      } else {
+        choicesHtml = `<pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap;word-wrap:break-word;margin:0;">${formatPrompt(displayAttempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+      }
+
+      const attemptBoxBorder = singleAttempt ? "#e2e8f0" : "#fecaca";
+      const attemptBoxBg = singleAttempt ? "#f8fafc" : "#fff5f5";
+      const attemptLabel = singleAttempt
+        ? "Single Attempt"
+        : `Attempt ${displayAttempt.attempts ?? "?"} — Worst Attempt`;
+      const attemptLabelColor = singleAttempt ? "#64748b" : "#dc2626";
+
+      const attemptsDetailHtml = `
+        <div style="border:1px solid ${attemptBoxBorder};border-radius:6px;padding:12px;margin-bottom:8px;background:${attemptBoxBg};">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:12px;font-weight:700;color:${attemptLabelColor};">${attemptLabel}</span>
+            <span style="font-size:12px;font-weight:700;color:${displayPct >= 70 ? "#16a34a" : "#dc2626"};">${displayPct}%</span>
+          </div>
+          ${choicesHtml}
+        </div>`;
+
+      roundsHtml += `
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round 1: ${r1Label}</h3>
+            <div style="display:flex;gap:12px;font-size:12px;color:#64748b;align-items:center;">
+              <span>Worst Score: <strong style="color:${r1ScoreColor}">${displayPct}%</strong></span>
+              <span>Attempts: <strong>${r1Entries.length}</strong></span>
+              ${singleAttempt ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #bbf7d0;">First Attempt Pass</span>' : ""}
+            </div>
+          </div>
+          ${attemptsDetailHtml}
+          ${r1Tip ? `
+          <div style="margin-top:8px;">
+            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tips</div>
+            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;">${r1Tip}</div>
+          </div>` : ""}
+        </div>`;
+    }
+
+    // ── Rounds 2–6 — group by round number, show passing attempt ─────────────
+    const otherRoundGroups = new Map<number, typeof otherRounds>();
+    for (const r of otherRounds) {
+      const group = otherRoundGroups.get(r.round) ?? [];
+      group.push(r);
+      otherRoundGroups.set(r.round, group);
+    }
+
+    for (const [roundNum, roundAttempts] of Array.from(otherRoundGroups.entries()).sort(([a], [b]) => a - b)) {
+      const sortedAttempts = [...roundAttempts].sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0));
+      // The last attempt is the one that passed (or the final try if it failed the game)
+      const passingAttempt = sortedAttempts[sortedAttempts.length - 1];
+      const totalAttempts = sortedAttempts.length;
+      const pct = Math.round(passingAttempt.score * 100);
+      const label = ROUND_TYPE_LABELS[roundNum] ?? "Unknown";
+      // consolidated tip covers all attempts (generated by roundTips.ts)
+      const tip = tips?.[roundNum] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
       const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
-      const tipBg = "#fffbeb";
-      const tipBorder = "#fcd34d";
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
-            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${r.round}: ${label}</h3>
-            <div style="display:flex;gap:16px;font-size:12px;color:#64748b;">
+            <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${roundNum}: ${label}</h3>
+            <div style="display:flex;gap:16px;font-size:12px;color:#64748b;align-items:center;">
               <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
-              <span>Attempts: <strong>${r.attempts}</strong></span>
+              <span>Attempts: <strong>${totalAttempts}</strong></span>
             </div>
           </div>
           <div style="margin-bottom:8px;">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Player Prompt / Response</div>
-            <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(r.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
+              ${totalAttempts > 1 ? `Passing Attempt (Attempt ${passingAttempt.attempts ?? totalAttempts})` : "Player Prompt / Response"}
+            </div>
+            <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(passingAttempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>
-          ${r.output ? `
+          ${passingAttempt.output ? `
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
-            <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${r.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${passingAttempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>` : ""}
-          ${tip ? `
           <div style="margin-top:8px;">
-            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tip</div>
-            <div style="background:${tipBg};border:1px solid ${tipBorder};border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${tip}</div>
-          </div>` : ""}
+            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tips</div>
+            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${tip}</div>
+          </div>
         </div>`;
     }
 
@@ -1501,9 +1612,6 @@ export default function GameUI() {
             <h1 className="text-5xl md:text-7xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter">
               PROMPT <span className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]">WARS</span>
             </h1>
-            <p className="text-md text-slate-400 font-mono tracking-widest uppercase mb-12">
-              The Ultimate Engineering Gauntlet
-            </p>
 
             <div className="space-y-6 text-slate-300 text-sm md:text-base leading-relaxed text-left max-w-2xl mx-auto">
 
@@ -1520,7 +1628,7 @@ export default function GameUI() {
                 <div className="bg-amber-950/20 border border-amber-900/50 p-4 rounded text-sm font-mono">
                   <p className="text-amber-500/90">
                     <strong className="text-amber-400 block mb-1">WARNING: HIDDEN DIRECTIVE</strong>
-                    Operatives who clear all 5 sectors before life support failure will unlock the classified.
+                    Operatives who clear all 5 sectors before life support failure will unlock a classified protocol.
                   </p>
                 </div>
               </section>
@@ -1990,6 +2098,74 @@ export default function GameUI() {
           {message && (
             <p className="text-amber-500 font-mono tracking-widest uppercase text-sm mb-6 bg-amber-950/30 inline-block px-4 py-2 border border-amber-900/50 rounded">{message}</p>
           )}
+          {(() => {
+            const STATUS_CARDS: Record<string, { title: string; body: string; statusLine: string; border: string; titleColor: string; bodyColor: string; statusColor: string; statusBorder: string }> = {
+              COMPLETED_WITH_BONUS: {
+                title: "🎖 Mission Status: Exceptional Success",
+                body: "Operative, all primary objectives have been completed successfully, including the advanced bonus protocol. You demonstrated exceptional reasoning, prompt engineering precision, and adaptability under mission constraints.\n\nMission Control has recorded your performance for final ranking assessment. Your ability to navigate ambiguity, optimize instructions, and overcome hidden constraints marks a highly successful operation.",
+                statusLine: "Mission Accomplished — Enhanced Clearance Achieved.",
+                border: "border-emerald-700",
+                titleColor: "text-emerald-400",
+                bodyColor: "text-emerald-200/70",
+                statusColor: "text-emerald-300",
+                statusBorder: "border-emerald-800/50",
+              },
+              COMPLETED: {
+                title: "✅ Mission Status: Core Objectives Completed",
+                body: "Operative, all primary mission objectives have been completed successfully. The advanced bonus protocol was initiated but could not be fully resolved within operational constraints.\n\nYour performance across the core mission has been recorded and will contribute toward final ranking assessment. Successfully reaching this stage demonstrates strong strategic prompting capability.",
+                statusLine: "Mission Completed — Bonus Protocol Incomplete.",
+                border: "border-cyan-700",
+                titleColor: "text-cyan-400",
+                bodyColor: "text-cyan-200/70",
+                statusColor: "text-cyan-300",
+                statusBorder: "border-cyan-800/50",
+              },
+              FAILED: {
+                title: "⚠️ Mission Status: Operational Failure",
+                body: "Operative, maximum authorized attempts for this mission phase have been exhausted. Further progression has been terminated under system protocol.\n\nMission Control has recorded your progress and completed objectives up to this point. Precision and strategic execution remain critical under restricted operational limits.",
+                statusLine: "Mission Terminated — Attempt Threshold Reached.",
+                border: "border-red-800",
+                titleColor: "text-red-400",
+                bodyColor: "text-red-200/70",
+                statusColor: "text-red-300",
+                statusBorder: "border-red-900/50",
+              },
+              TIME_OVER: {
+                title: "⏰ Mission Status: Time Limit Exceeded",
+                body: "Operative, the mission timer has expired before objective completion. Under field conditions, effective decision-making must balance both precision and speed.\n\nYour operational progress has been recorded and will be included in mission performance analysis.",
+                statusLine: "Mission Incomplete — Time Window Closed.",
+                border: "border-amber-700",
+                titleColor: "text-amber-400",
+                bodyColor: "text-amber-200/70",
+                statusColor: "text-amber-300",
+                statusBorder: "border-amber-800/50",
+              },
+              DISQUALIFIED: {
+                title: "🚫 Mission Status: Protocol Violation",
+                body: "Operative, this mission has been terminated due to a detected protocol violation. Mission integrity and operational fairness must be maintained across all participants.\n\nMission Control has documented progress completed prior to termination for administrative review.",
+                statusLine: "Access Revoked — Protocol Breach Detected.",
+                border: "border-red-900",
+                titleColor: "text-red-500",
+                bodyColor: "text-red-300/70",
+                statusColor: "text-red-400",
+                statusBorder: "border-red-900/50",
+              },
+            };
+            const card = stats.terminalStatus ? STATUS_CARDS[stats.terminalStatus] : null;
+            if (!card) return null;
+            return (
+              <div className={`terminal-panel p-6 rounded-xl text-left border ${card.border} shadow-[0_0_50px_rgba(0,0,0,0.8)] relative mb-8`}>
+                <div className="screen-glare absolute inset-0 rounded-xl" />
+                <div className="relative z-10">
+                  <h2 className={`text-base font-mono font-bold mb-4 ${card.titleColor}`}>{card.title}</h2>
+                  <p className={`text-sm font-mono leading-relaxed whitespace-pre-line mb-4 ${card.bodyColor}`}>{card.body}</p>
+                  <div className={`text-xs font-mono font-bold uppercase tracking-widest pt-3 border-t ${card.statusBorder} ${card.statusColor}`}>
+                    Status: {card.statusLine}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="terminal-panel p-8 rounded-xl text-left border border-slate-700 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
             <div className="screen-glare absolute inset-0 rounded-xl" />
 
@@ -2032,7 +2208,8 @@ export default function GameUI() {
                     {stats.accuracies.map((score, idx) => {
                       const roundNum = idx + 1;
                       const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
-                      const pct = Math.round(score * 100);
+                      const isR1FirstTry = roundNum === 1 && stats.attemptsPerRound[1] === 1;
+                      const pct = isR1FirstTry ? 100 : Math.round(score * 100);
                       const barColor = pct >= 70 ? "bg-green-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
                       const textColor = pct >= 70 ? "text-green-400" : pct >= 50 ? "text-amber-400" : "text-red-400";
                       return (
@@ -2043,6 +2220,9 @@ export default function GameUI() {
                             <div className={`${barColor} h-full rounded-full`} style={{ width: `${pct}%` }} />
                           </div>
                           <span className={`${textColor} font-bold w-10 text-right shrink-0`}>{pct}%</span>
+                          {isR1FirstTry && (
+                            <span className="text-green-600 text-[10px] bg-green-950/30 border border-green-900/50 rounded px-1.5 py-0.5 shrink-0">1st try</span>
+                          )}
                         </div>
                       );
                     })}

@@ -44,16 +44,11 @@ function truncate(text: string, max: number): string {
 }
 
 async function generateSingleTip(r: RoundForTip): Promise<string | null> {
-  // Round 1 with a single attempt — player got it right first try, no tip needed
-  if (r.round === 1 && r.attempts <= 1) return null;
-
   const label = ROUND_TYPE_LABELS[r.round] ?? `Round ${r.round}`;
   const pct = Math.round(r.score * 100);
   const promptText = truncate(formatPrompt(r.prompt), 1200);
   const outputText = r.output ? truncate(r.output, 800) : null;
 
-  // Round 1 (Signal Scan) — player assembled a prompt from preset techniques.
-  // Explain what each technique means and whether it was the right choice.
   const instruction =
     r.round === 1
       ? `The player assembled this prompt by selecting preset prompt-engineering techniques (such as Role prompting, Chain-of-thought, Few-shot examples, etc.).
@@ -97,20 +92,107 @@ Also highlight any techniques that were incorrect or missing and what should hav
     });
     const tip = res.choices[0]?.message?.content?.trim();
     if (tip && tip.length > 0) return tip;
-    return r.round === 1 ? null : (FALLBACK_TIPS[label] ?? "Review the round instructions carefully.");
+    return FALLBACK_TIPS[label] ?? "Review the round instructions carefully.";
   } catch {
-    return r.round === 1 ? null : (FALLBACK_TIPS[label] ?? "Review the round instructions carefully.");
+    return FALLBACK_TIPS[label] ?? "Review the round instructions carefully.";
+  }
+}
+
+async function generateMultiAttemptTip(
+  roundNum: number,
+  attempts: RoundForTip[]
+): Promise<string | null> {
+  const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
+  const finalPct = Math.round(attempts[attempts.length - 1].score * 100);
+
+  const attemptsText = attempts
+    .map((r, i) => {
+      const pct = Math.round(r.score * 100);
+      const promptText = truncate(formatPrompt(r.prompt), 600);
+      const outputText = r.output ? truncate(r.output, 300) : null;
+      return [
+        `Attempt ${i + 1} — Score: ${pct}%`,
+        `Prompt: ${promptText}`,
+        outputText ? `Output: ${outputText}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n---\n\n");
+
+  try {
+    const openai = getOpenAI();
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a prompt engineering coach reviewing multiple attempts at a competition challenge. Be specific and direct. Do not start sentences with 'Your prompt' or 'The prompt'. Use plain language.",
+        },
+        {
+          role: "user",
+          content: [
+            `Round: ${label}`,
+            `Total Attempts: ${attempts.length}`,
+            `Final Score: ${finalPct}%`,
+            "",
+            "All attempts in order:",
+            attemptsText,
+            "",
+            "Based on the progression across all attempts:",
+            "1. Identify what improved between attempts and what the player figured out along the way.",
+            "2. Explain what in the final prompt still limited the score below 100%.",
+            "3. Describe concretely what changes would push the score higher on the next try.",
+          ].join("\n"),
+        },
+      ],
+      temperature: 0.5,
+    });
+    const tip = res.choices[0]?.message?.content?.trim();
+    if (tip && tip.length > 0) return tip;
+    return FALLBACK_TIPS[label] ?? "Review the round instructions carefully.";
+  } catch {
+    return FALLBACK_TIPS[label] ?? "Review the round instructions carefully.";
   }
 }
 
 export async function generateRoundTips(
   rounds: RoundForTip[]
 ): Promise<Record<number, string>> {
+  // Group all attempt records by round number, sort each group by attempt count
+  const byRound = new Map<number, RoundForTip[]>();
+  for (const r of rounds) {
+    const group = byRound.get(r.round) ?? [];
+    group.push(r);
+    byRound.set(r.round, group);
+  }
+
   const entries = await Promise.all(
-    rounds.map(async (r) => {
-      const tip = await generateSingleTip(r);
-      return tip !== null ? ([r.round, tip] as const) : null;
+    Array.from(byRound.entries()).map(async ([roundNum, attempts]) => {
+      const sorted = [...attempts].sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0));
+
+      // Round 1, single attempt — got it right first try, no tip needed
+      if (roundNum === 1 && sorted.length === 1) return null;
+
+      // Round 1, multiple attempts — tip based on the worst attempt
+      if (roundNum === 1) {
+        const worst = sorted.reduce((w, r) => r.score < w.score ? r : w, sorted[0]);
+        const tip = await generateSingleTip(worst);
+        return tip !== null ? ([roundNum, tip] as const) : null;
+      }
+
+      // Other rounds, single attempt
+      if (sorted.length === 1) {
+        const tip = await generateSingleTip(sorted[0]);
+        return tip !== null ? ([roundNum, tip] as const) : null;
+      }
+
+      // Other rounds, multiple attempts — consolidated tip covering all attempts
+      const tip = await generateMultiAttemptTip(roundNum, sorted);
+      return tip !== null ? ([roundNum, tip] as const) : null;
     })
   );
+
   return Object.fromEntries(entries.filter((e): e is [number, string] => e !== null));
 }
