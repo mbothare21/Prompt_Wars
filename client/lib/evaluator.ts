@@ -417,13 +417,16 @@ function evaluateClassifyRound(
 }
 
 function getImproveBaselinePrompt(round: Round): string {
-  return round.originalPrompt?.trim() || "Summarize this.";
+  return (
+    round.originalPrompt?.trim() ||
+    "Extract the key business insights from the following content. Identify conflicts between stakeholders, decisions made, dependencies that are blocking progress, risks, and immediate next steps. Structure the output clearly with each category labeled."
+  );
 }
 
 function getReverseBaselinePrompt(round: Round): string {
   const example = round.expectedOutput?.trim();
   return example
-    ? `Use the example below as inspiration to generate a startup brief in a similar format.\n\nExample:\n${example}`
+    ? `Study the structured output below carefully. Write a precise prompt that would reliably generate content in exactly the same format and structure as the example, covering all the same sections.\n\nExample:\n${example}`
     : "Write a structured startup idea.";
 }
 
@@ -432,7 +435,7 @@ function getOptimizeBaselinePrompt(round: Round): string {
 }
 
 function getStructuredBaselinePrompt(): string {
-  return "Solve this problem.";
+  return "Think through this problem step by step. Identify all constraints and rules first, then work through each step systematically, showing your reasoning at each stage. State your final answer clearly.";
 }
 
 
@@ -704,8 +707,8 @@ async function evaluateImproveRound(round: Round, userPrompt: string) {
     "IMPROVE"
   );
   const finalScore =
-    0.45 * scored.taskOutputScore +
-    0.25 * scored.promptScore +
+    0.3 * scored.taskOutputScore +
+    0.4 * scored.promptScore +
     0.3 * baselineGate.baselineGateScore;
   return {
     output,
@@ -732,8 +735,8 @@ async function evaluateReverseRound(round: Round, userPrompt: string) {
     "REVERSE"
   );
   const finalScore =
-    0.45 * scored.taskOutputScore +
-    0.25 * scored.promptScore +
+    0.3 * scored.taskOutputScore +
+    0.4 * scored.promptScore +
     0.3 * baselineGate.baselineGateScore;
   return {
     output,
@@ -761,8 +764,8 @@ async function evaluateStructuredRound(round: Round, userPrompt: string) {
     "STRUCTURED"
   );
   const finalScore =
-    0.45 * scored.taskOutputScore +
-    0.25 * scored.promptScore +
+    0.3 * scored.taskOutputScore +
+    0.4 * scored.promptScore +
     0.3 * baselineGate.baselineGateScore;
   return {
     output,
