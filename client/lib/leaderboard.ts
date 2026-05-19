@@ -1,6 +1,7 @@
 import { SESSION_TIME_LIMIT_MS } from "./gameConstants";
 import type { Player } from "./types";
 import { isAdminEmail } from "./admin";
+import { isAttemptGameBypassEmail } from "@server/lib/employeeAccess";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 import { getPlayers } from "./playerStore";
@@ -57,7 +58,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
     totalScore: 0,
     averageScore: player.avgAccuracy ?? 0,
     attempts: player.attemptsTaken ?? 0,
-    completed: true,
+    completed: !!toTimestamp(player.completedAt),
     timeLimit: SESSION_TIME_LIMIT_MS,
     gameStatus: player.gameStatus,
   };
@@ -65,9 +66,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
 
 async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
   await connectDB();
-  const dbPlayers = await PlayerModel.find({
-    completedAt: { $exists: true },
-  })
+  const dbPlayers = await PlayerModel.find({})
     .select({
       name: 1,
       email: 1,
@@ -81,11 +80,12 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
       completedAt: 1,
     })
     .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
+    .limit(500)
     .lean();
 
   const ranked = rankPlayers(
     (dbPlayers as DbLeaderboardPlayer[])
-      .filter((player) => !isAdminEmail(player.email))
+      .filter((player) => !isAdminEmail(player.email) && !isAttemptGameBypassEmail(player.email))
       .map(normalizeDbPlayer)
   );
   cachedLeaderboard = ranked;
@@ -96,9 +96,8 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
 function getFallbackLeaderboard(): Player[] {
   return rankPlayers(
     getPlayers()
-      .filter((player) => !isAdminEmail(player.email))
-      .filter((player) => player.completed)
-      .slice(0, 100)
+      .filter((player) => !isAdminEmail(player.email) && !isAttemptGameBypassEmail(player.email))
+      .slice(0, 500)
   );
 }
 

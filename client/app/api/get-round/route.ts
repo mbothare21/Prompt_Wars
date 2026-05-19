@@ -53,10 +53,16 @@ export async function POST(req: Request) {
   const session = await getSession(sessionId);
 
   if (!session) {
+    console.log("[get-round] INVALID_SESSION", { sessionId });
     return Response.json({ error: "Invalid session" });
   }
 
   if (session.status === "DISQUALIFIED") {
+    console.log("[get-round] DISQUALIFIED", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      currentRound: session.currentRound,
+    });
     return Response.json({
       status: "DISQUALIFIED",
       sessionStatus: session.status,
@@ -64,6 +70,12 @@ export async function POST(req: Request) {
   }
 
   if (session.status === "FAILED") {
+    console.log("[get-round] GAME_OVER:FAILED", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      currentRound: session.currentRound,
+      attemptsPerRound: session.attemptsPerRound,
+    });
     return Response.json({
       status: "GAME_OVER",
       sessionStatus: session.status,
@@ -75,11 +87,19 @@ export async function POST(req: Request) {
     return Response.json({
       status: "GAME_COMPLETED",
       sessionStatus: session.status,
+      gameStatus: session.player.gameStatus,
       bonusUnlocked: session.bonusUnlocked,
     });
   }
 
   if (isTimeUp(session)) {
+    console.log("[get-round] GAME_OVER:TIME_UP", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      currentRound: session.currentRound,
+      elapsedMs: Date.now() - session.startTime,
+      timeLimitMs: session.timeLimit,
+    });
     session.status = "TIME_UP";
     session.completed = true;
     session.player.completed = true;
@@ -101,6 +121,12 @@ export async function POST(req: Request) {
   }
 
   if (session.completed) {
+    console.log("[get-round] GAME_OVER:completed-fallthrough", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      sessionStatus: session.status,
+      currentRound: session.currentRound,
+    });
     return Response.json({
       status: "GAME_OVER",
       sessionStatus: session.status,

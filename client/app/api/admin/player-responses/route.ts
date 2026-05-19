@@ -41,11 +41,17 @@ export async function GET(req: Request) {
       .lean()) as RawAdminPlayerDoc | null;
 
     if (!doc) {
+      console.log("[player-responses] NOT_FOUND", { email });
       return Response.json({ error: "Player not found" }, { status: 404 });
     }
 
     const player = toAdminPlayerExport(doc);
-    const tips = await generateRoundTips(player.rounds);
+    let tips: Record<number, string> = {};
+    try {
+      tips = await generateRoundTips(player.rounds);
+    } catch (e) {
+      console.error("[admin/player-responses] tips generation failed:", e);
+    }
     return Response.json({ player, tips });
   } catch (e) {
     console.error("[admin/player-responses]", e);

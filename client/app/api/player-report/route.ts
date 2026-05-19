@@ -9,18 +9,26 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId")?.trim();
-  if (!sessionId) {
+  const emailParam = searchParams.get("email")?.trim().toLowerCase();
+
+  if (!sessionId && !emailParam) {
     return Response.json({ error: "sessionId is required" }, { status: 400 });
   }
 
-  const session = await getSession(sessionId);
-  if (!session) {
-    return Response.json({ error: "Session not found or expired" }, { status: 404 });
+  let email: string | undefined;
+
+  if (sessionId) {
+    const session = await getSession(sessionId);
+    email = session?.player.email;
   }
 
-  const email = session.player.email;
+  // Fall back to email param when session has expired (e.g. serverless cold start, no Redis)
+  if (!email && emailParam) {
+    email = emailParam;
+  }
+
   if (!email) {
-    return Response.json({ error: "No email associated with this session" }, { status: 400 });
+    return Response.json({ error: "Session not found or expired" }, { status: 404 });
   }
 
   try {

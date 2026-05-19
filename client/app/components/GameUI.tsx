@@ -83,12 +83,12 @@ type AdminPlayer = {
 };
 
 const ROUND_TYPE_NAMES: Record<string, string> = {
-  CLASSIFY: "Signal Scan",
-  IMPROVE: "Prompt Refinery",
-  REVERSE: "Backtrace",
-  OPTIMIZE: "Compression Chamber",
-  STRUCTURED: "Protocol Stack",
-  BONUS: "Prompt Forge",
+  CLASSIFY: "Classification",
+  IMPROVE: "Prompt Improvement",
+  REVERSE: "Reverse Engineering",
+  OPTIMIZE: "Optimization",
+  STRUCTURED: "Structured Output",
+  BONUS: "Bonus Challenge",
 };
 
 function formatTitle(type: string | undefined): string {
@@ -216,6 +216,11 @@ export default function GameUI() {
   const [error, setError] = useState<string | null>(null);
 
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
+  const [previousAttempt, setPreviousAttempt] = useState<{ prompt: string; output: string; score: number } | null>(null);
+  const [showPreviousOutput, setShowPreviousOutput] = useState(false);
+  const [showPassAnimation, setShowPassAnimation] = useState(false);
+  const [maxAttemptsThisRound, setMaxAttemptsThisRound] = useState(3);
+  const [hintDismissed, setHintDismissed] = useState(false);
 
   const [stats, setStats] = useState({
     roundsCompleted: 0,
@@ -250,6 +255,8 @@ export default function GameUI() {
   const roundWallStartedAtRef = useRef<number>(0);
   const initialSessionSecondsRef = useRef<number>(0);
   const passAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deadlineRef = useRef<number>(0);
+  const gameStartedAtRef = useRef<number>(0);
 
   const applyRoundPayload = useCallback((data: RoundPayload) => {
     const max = data.maxAttemptsThisRound ?? 3;
@@ -260,6 +267,7 @@ export default function GameUI() {
         setRoundNumber(data.roundNumber);
       }
       if (typeof data.remainingTime === "number") {
+        deadlineRef.current = Date.now() + data.remainingTime;
         setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
       }
       setCurrentRoundData({
@@ -274,8 +282,10 @@ export default function GameUI() {
       });
       if (max < 0) {
         setAttemptsRemaining(-1);
+        setMaxAttemptsThisRound(-1);
       } else {
         setAttemptsRemaining(Math.max(0, max - used));
+        setMaxAttemptsThisRound(max);
       }
     });
   }, []);
@@ -288,7 +298,7 @@ export default function GameUI() {
         body: JSON.stringify({ sessionId: sid }),
       });
 
-      let data: RoundPayload & { sessionStatus?: string };
+      let data: RoundPayload & { sessionStatus?: string; gameStatus?: string };
       try {
         data = (await res.json()) as typeof data;
       } catch {
@@ -325,10 +335,11 @@ export default function GameUI() {
         return;
       }
       if (data.status === "GAME_COMPLETED") {
+        const gameStatus = data.gameStatus as string | undefined;
         setStats((s) => ({
           ...s,
           bonusCompleted: Boolean(data.bonusUnlocked),
-          terminalStatus: "COMPLETED_WITH_BONUS",
+          terminalStatus: gameStatus === "COMPLETED_WITH_BONUS" ? "COMPLETED_WITH_BONUS" : "COMPLETED",
         }));
         setPhase("finished");
         return;
@@ -355,7 +366,7 @@ export default function GameUI() {
   });
 
   const tickCountdown = useEffectEvent(() => {
-    setTimeLeftSec((s) => Math.max(0, s - 1));
+    setTimeLeftSec(Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000)));
   });
 
   // ── localStorage: restore state on mount ──
@@ -483,20 +494,27 @@ export default function GameUI() {
           return;
         }
         if (typeof data.remainingTime === "number") {
+          deadlineRef.current = Date.now() + data.remainingTime;
           setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
         }
         setViolations(data.violations ?? 0);
         const label = violationType === "TAB_SWITCH" ? "Tab switching" : "Copy/Paste";
         alert(
-          `\u26A0\uFE0F CRITICAL SECURITY OVERRIDE DETECTED.\n\n${label} is strictly prohibited. 15 seconds deducted from life support.\n\nViolations remaining before disqualification: ${data.violationsRemaining}`
+          `\u26A0\uFE0F Fair Play Violation Detected.\n\n${label} is not allowed. 15 seconds have been deducted from your timer.\n\nViolations remaining before disqualification: ${data.violationsRemaining}`
         );
       } catch {
         // Fallback: apply penalty locally if API call fails
-        setTimeLeftSec((prev) => Math.max(0, prev - 15));
+        deadlineRef.current = Math.max(Date.now(), deadlineRef.current - 15_000);
+        setTimeLeftSec(Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000)));
       }
     },
     [finishGame]
   );
+
+  // Reset hint dismissal when round changes
+  useEffect(() => {
+    setHintDismissed(false);
+  }, [roundNumber]);
 
   // Fetch leaderboard when game finishes
   useEffect(() => {
@@ -504,12 +522,34 @@ export default function GameUI() {
     fetch("/api/leaderboard")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data.leaderboard)) {
-          setLeaderboardData(data.leaderboard);
+        if (!Array.isArray(data.leaderboard)) return;
+        const list: LeaderboardEntry[] = data.leaderboard;
+        const alreadyPresent = list.some(
+          (p) => p.email === player.email || p.name === player.name
+        );
+        if (!alreadyPresent && (player.email || player.name)) {
+          const completedAt = Date.now();
+          const startedAt = gameStartedAtRef.current || (completedAt - SESSION_TIME_LIMIT_MS);
+          const accuracies = stats.accuracies.filter((v) => v > 0);
+          const avgScore = accuracies.length > 0
+            ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
+            : 0;
+          const synthetic: LeaderboardEntry = {
+            playerId: sessionId ?? `${player.email}-${startedAt}`,
+            name: player.name || "You",
+            email: player.email || undefined,
+            roundsPlayed: stats.roundsCompleted,
+            startedAt,
+            completedAt,
+            averageScore: avgScore,
+          };
+          setLeaderboardData([...list, synthetic]);
+        } else {
+          setLeaderboardData(list);
         }
       })
       .catch(() => { });
-  }, [phase]);
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") return;
@@ -668,16 +708,16 @@ export default function GameUI() {
       try {
         data = (await res.json()) as typeof data;
       } catch {
-        setError("Terminal uplink failed.");
+        setError("Connection failed. Please try again.");
         return;
       }
 
       if (!res.ok) {
-        setError(data.error ?? `Uplink failed (${res.status}).`);
+        setError(data.error ?? `Request failed (${res.status}).`);
         return;
       }
       if (data.status === "ALREADY_PLAYED") {
-        setError(data.message ?? "You have already attempted the gauntlet.");
+        setError(data.message ?? "You have already played this game.");
         return;
       }
       if (!data.sessionId) {
@@ -689,10 +729,12 @@ export default function GameUI() {
       const remainingMs = typeof data.remainingTime === "number" ? data.remainingTime : budgetMs;
       const sec = Math.max(1, Math.ceil(remainingMs / 1000));
       initialSessionSecondsRef.current = sec;
+      deadlineRef.current = Date.now() + remainingMs;
+      gameStartedAtRef.current = Date.now() + remainingMs - budgetMs;
       setSessionId(data.sessionId);
       setTimeLeftSec(sec);
       setPhase("playing");
-      setMessage(data.status === "RESUME" ? "Restoring terminal session…" : "Unlocking Door 1…");
+      setMessage(data.status === "RESUME" ? "Resuming your session…" : "Loading Round 1…");
 
       try {
         await refreshRound(data.sessionId);
@@ -760,6 +802,7 @@ export default function GameUI() {
       }
 
       if (typeof data.remainingTime === "number") {
+        deadlineRef.current = Date.now() + data.remainingTime;
         setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
       }
 
@@ -812,7 +855,7 @@ export default function GameUI() {
     }
 
     if (attemptsRemaining === 0) {
-      setError("Lockout active. No attempts remaining.");
+      setError("No attempts remaining.");
       return;
     }
 
@@ -840,7 +883,7 @@ export default function GameUI() {
         return;
       }
       if (data.error === "Invalid session") {
-        setError("Terminal session expired.");
+        setError("Session expired.");
         finishGame();
         return;
       }
@@ -849,12 +892,22 @@ export default function GameUI() {
 
       if (status === "GAME_OVER" && data.reason === "TIME_UP") {
         setStats((prev) => ({ ...prev, terminalStatus: "TIME_OVER" }));
-        finishGame("Life support depleted. Time is up.");
+        finishGame("Time's up!");
         return;
       }
 
       if (status === "GAME_ALREADY_COMPLETED") {
-        finishGame("Sequence already terminated.");
+        const sessionStatus = data.sessionStatus as string | undefined;
+        setStats((prev) => {
+          if (prev.terminalStatus) return prev;
+          const derived =
+            sessionStatus === "TIME_UP" ? "TIME_OVER" :
+            sessionStatus === "FAILED" ? "FAILED" :
+            sessionStatus === "DISQUALIFIED" ? "DISQUALIFIED" :
+            sessionStatus === "COMPLETED" ? "COMPLETED" : null;
+          return derived ? { ...prev, terminalStatus: derived } : prev;
+        });
+        finishGame("Game already finished.");
         return;
       }
 
@@ -869,7 +922,7 @@ export default function GameUI() {
       }
 
       if (status === "NO_ATTEMPTS_LEFT") {
-        setError("Access Denied. Lockout engaged.");
+        setError("No attempts left. Game over.");
         setStats((prev) => ({
           ...prev,
           terminalStatus: roundNumber >= TOTAL_ROUNDS ? "COMPLETED" : "FAILED",
@@ -897,20 +950,38 @@ export default function GameUI() {
       if (status === "ROUND_FAILED") {
         const ar = data.attemptsRemaining as number | undefined;
         if (typeof ar === "number") setAttemptsRemaining(ar);
+        if (typeof data.remainingTime === "number") {
+          deadlineRef.current = Date.now() + (data.remainingTime as number);
+          setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
+        }
+        const attemptOutput =
+          (data.output as string | undefined) ??
+          (data.finalOutput as string | undefined) ??
+          "";
+        setPreviousAttempt({ prompt: promptInput, output: attemptOutput, score: finalScore * 100 });
+        setShowPreviousOutput(true);
         setLastResult(buildLastResult(finalScore, false));
-        setPromptInput("");
+        // Keep promptInput so the user can edit their previous attempt
         await refreshRound(sid);
         return;
       }
 
       if (status === "ROUND_PASSED") {
+        if (typeof data.remainingTime === "number") {
+          deadlineRef.current = Date.now() + (data.remainingTime as number);
+          setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
+        }
         setStats((prev) => ({
           ...prev,
           roundsCompleted: Math.max(prev.roundsCompleted, roundNumber),
         }));
         setLastResult(buildLastResult(finalScore, true));
+        setShowPassAnimation(true);
+        setTimeout(() => setShowPassAnimation(false), 1800);
         setPromptInput("");
         setDropdownSelections({});
+        setPreviousAttempt(null);
+        setShowPreviousOutput(false);
 
         if (passAdvanceTimeoutRef.current) {
           clearTimeout(passAdvanceTimeoutRef.current);
@@ -925,20 +996,21 @@ export default function GameUI() {
 
       if (status === "GAME_COMPLETED") {
         setLastResult(buildLastResult(finalScore, true));
+        const gameStatus = data.gameStatus as string | undefined;
         setStats((prev) => ({
           ...prev,
           roundsCompleted: Math.max(prev.roundsCompleted, TOTAL_ROUNDS),
           bonusCompleted: Boolean(data.bonusUnlocked),
           highScoreBonus: Boolean(data.highScoreBonus),
           lastFinalScore: finalScore,
-          terminalStatus: "COMPLETED_WITH_BONUS",
+          terminalStatus: gameStatus === "COMPLETED_WITH_BONUS" ? "COMPLETED_WITH_BONUS" : "COMPLETED",
         }));
         setPhase("finished");
-        setMessage("Facility Escaped. Uplink Terminated.");
+        setMessage("All rounds complete!");
         return;
       }
     } catch {
-      setError("Signal lost. Re-transmit code.");
+      setError("Something went wrong. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -953,7 +1025,7 @@ export default function GameUI() {
   const avgAccuracy = stats.accuracies.length > 0 ? stats.accuracies.reduce((a, b) => a + b, 0) / stats.accuracies.length : 0;
   const avgAccuracyPct = avgAccuracy * 100;
   const totalSecondsUsed = Math.max(0, initialSessionSecondsRef.current - timeLeftSec);
-  const headerTitle = `DOOR ${roundNumber} OF ${TOTAL_ROUNDS}: ${formatTitle(currentRoundData?.type).toUpperCase()}`;
+  const headerTitle = `ROUND ${roundNumber} OF ${TOTAL_ROUNDS}: ${formatTitle(currentRoundData?.type).toUpperCase()}`;
   const inputLocked = busy || attemptsRemaining === 0 || lastResult?.passed === true;
   const currentAccuracy = lastResult ? Math.min(100, Math.max(0, lastResult.score)) : 0;
   const bonusPromptReady =
@@ -1027,7 +1099,7 @@ export default function GameUI() {
       // Single attempt passes at 100% (threshold is 1.0); multiple attempts show the worst score
       const displayPct = singleAttempt ? 100 : Math.round(worstAttempt.score * 100);
       const r1ScoreColor = displayPct >= 70 ? "#16a34a" : "#dc2626";
-      const r1Label = ROUND_TYPE_LABELS[1] ?? "Signal Scan";
+      const r1Label = ROUND_TYPE_LABELS[1] ?? "Classification";
       const r1Tip = singleAttempt
         ? null
         : (tips?.[1] ?? IMPROVEMENT_TIPS_HTML[r1Label] ?? "Review classification boundaries carefully.");
@@ -1197,7 +1269,8 @@ export default function GameUI() {
     if (!sessionId) return;
     setDownloadingMyReport(true);
     try {
-      const res = await fetch(`/api/player-report?sessionId=${encodeURIComponent(sessionId)}`);
+      const emailQuery = player.email ? `&email=${encodeURIComponent(player.email)}` : "";
+      const res = await fetch(`/api/player-report?sessionId=${encodeURIComponent(sessionId)}${emailQuery}`);
       const data = (await res.json()) as { error?: string; player?: MongoPlayer; tips?: Record<number, string> };
       if (!res.ok || !data.player) {
         alert(data.error ?? "Failed to fetch your report");
@@ -1255,6 +1328,11 @@ export default function GameUI() {
     }
   };
 
+  const attemptsUsedThisRound = maxAttemptsThisRound > 0 ? maxAttemptsThisRound - attemptsRemaining : 0;
+  const hintTriggerCount = roundNumber === 1 ? 2 : roundNumber === 6 ? 0 : 1;
+  const hintAvailable = roundNumber >= 1 && roundNumber <= 6 && attemptsUsedThisRound >= hintTriggerCount;
+  const showHintCloud = hintAvailable && !hintDismissed;
+
   return (
     <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
 
@@ -1309,7 +1387,7 @@ export default function GameUI() {
                   <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm">Select Sector:</label>
                   <select value={adminRoundNumber} onChange={(e) => { setAdminRoundNumber(Number(e.target.value)); setAdminSetIndex(0); }} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
                     {Array.from({ length: TOTAL_ROUNDS }, (_, idx) => (
-                      <option key={idx + 1} value={idx + 1}>DOOR {idx + 1}</option>
+                      <option key={idx + 1} value={idx + 1}>Round {idx + 1}</option>
                     ))}
                   </select>
                   {(ROUND_SET_COUNTS[adminRoundNumber] ?? 1) > 1 && (
@@ -1330,7 +1408,7 @@ export default function GameUI() {
                   return (
                     <div className="border border-slate-700/50 rounded-xl p-6 bg-black/50 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)] relative mt-2">
                       <div className="flex justify-between items-end mb-4 border-b border-slate-800 pb-4 gap-4">
-                        <h2 className="text-2xl font-bold text-slate-300 font-mono">DOOR {adminRoundNumber} OF {TOTAL_ROUNDS}: {formatTitle(previewRound.type).toUpperCase()}</h2>
+                        <h2 className="text-2xl font-bold text-slate-300 font-mono">ROUND {adminRoundNumber} OF {TOTAL_ROUNDS}: {formatTitle(previewRound.type).toUpperCase()}</h2>
                         <div className="text-2xl font-mono font-bold shrink-0 text-red-900/50 bg-black/50 px-3 py-1 rounded border border-red-900/20">20:00</div>
                       </div>
 
@@ -1408,7 +1486,7 @@ export default function GameUI() {
                             {previewRound.expectedOutput && (
                               <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                                 <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                                  Target Signature
+                                  Target Output
                                   {adminRoundNumber === 2 && <span className="text-red-500/70 ml-2">(Classified)</span>}
                                 </h3>
                                 <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
@@ -1422,11 +1500,11 @@ export default function GameUI() {
                           <div className="flex flex-col gap-4">
                             <div className="flex-grow flex flex-col">
                               <div className="flex justify-between text-xs font-mono text-slate-500 mb-2 px-1 uppercase tracking-wider">
-                                <span>Lock threshold: {getTargetScore(adminRoundNumber)}.00</span>
+                                <span>Pass threshold: {getTargetScore(adminRoundNumber)}%</span>
                                 <span>
                                   {ATTEMPT_LIMITS[adminRoundNumber] != null
-                                    ? `Sec-Attempts: ${ATTEMPT_LIMITS[adminRoundNumber]}`
-                                    : "Attempts: Unrestricted"}
+                                    ? `Attempts: ${ATTEMPT_LIMITS[adminRoundNumber]}`
+                                    : "Attempts: Unlimited"}
                                 </span>
                               </div>
 
@@ -1472,7 +1550,7 @@ export default function GameUI() {
                               ) : (
                                 <textarea
                                   className="w-full grow p-4 bg-black/80 rounded border border-slate-700 text-slate-600 outline-none font-mono text-sm resize-none min-h-[250px] shadow-[inset_0_0_30px_rgba(0,0,0,1)] cursor-not-allowed leading-relaxed"
-                                  placeholder="Terminal locked in view mode..."
+                                  placeholder="Locked (view only)"
                                   disabled
                                 />
                               )}
@@ -1480,7 +1558,7 @@ export default function GameUI() {
 
                             {previewRound.type !== "CLASSIFY" && (
                               <button disabled className="bg-slate-900 border border-slate-800 text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase cursor-not-allowed">
-                                Initiate Override
+                                Submit
                               </button>
                             )}
                           </div>
@@ -1525,7 +1603,7 @@ export default function GameUI() {
                               <th className="p-3 font-bold text-center">Location</th>
                               <th className="p-3 font-bold text-center">Sectors</th>
                               <th className="p-3 font-bold text-center">Duration</th>
-                              <th className="p-3 font-bold text-center">Precision</th>
+                              <th className="p-3 font-bold text-center">Accuracy</th>
                               <th className="p-3 font-bold text-center">Attempts</th>
                               <th className="p-3 font-bold text-center">Status</th>
                               <th className="p-3 font-bold text-center">Responses</th>
@@ -1598,7 +1676,7 @@ export default function GameUI() {
             onClick={() => setPhase("welcome")}
             className="group relative px-12 py-4 bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-500/50 text-cyan-400 font-mono font-bold text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.2)] hover:shadow-[0_0_30px_rgba(8,145,178,0.5)]"
           >
-            Enter Facility
+            Enter
           </button>
         </div>
       )}
@@ -1610,7 +1688,7 @@ export default function GameUI() {
 
           <div className="relative z-10">
             <div className="inline-block mb-6 border border-amber-900/50 bg-amber-950/20 px-4 py-1 rounded text-amber-500 text-xs font-mono font-bold tracking-[0.3em] uppercase">
-              Classified Simulation
+              Prompt Engineering Challenge
             </div>
 
             <h1 className="text-5xl md:text-7xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter">
@@ -1621,18 +1699,18 @@ export default function GameUI() {
 
               <section className="bg-black/60 p-6 md:p-8 rounded border border-slate-700/50 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]">
                 <h2 className="text-lg font-mono font-bold text-cyan-400 mb-4 flex items-center gap-3 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
-                  <span className="bg-cyan-500 w-2 h-2 rounded-full animate-pulse"></span> Mission Briefing
+                  <span className="bg-cyan-500 w-2 h-2 rounded-full animate-pulse"></span> How It Works
                 </h2>
                 <p className="mb-4 text-slate-400">
                   <strong className="text-slate-200">Prompt Wars</strong> is a high-stress simulation designed to test your ability to command and manipulate AI systems using raw text constraints.
                 </p>
                 <p className="mb-6 text-slate-400">
-                  You will be locked into <strong className="text-slate-200">5 sequential containment sectors</strong>. To progress, you must decipher the required logic and generate the exact target code.
+                  There are <strong className="text-slate-200">5 sequential rounds</strong>. To progress through each round, you must craft a prompt that meets the target criteria.
                 </p>
                 <div className="bg-amber-950/20 border border-amber-900/50 p-4 rounded text-sm font-mono">
                   <p className="text-amber-500/90">
                     <strong className="text-amber-400 block mb-1">WARNING: HIDDEN DIRECTIVE</strong>
-                    Operatives who clear all 5 sectors before life support failure will unlock a classified protocol.
+                    Players who complete all 5 rounds before time runs out will unlock a hidden bonus challenge.
                   </p>
                 </div>
               </section>
@@ -1640,11 +1718,11 @@ export default function GameUI() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
                 <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
                   <h2 className="text-green-500 font-bold mb-2 uppercase tracking-widest">🎯 Primary Objective</h2>
-                  <p className="text-slate-500 leading-relaxed">Execute all overrides with maximum precision and speed before the master countdown hits zero.</p>
+                  <p className="text-slate-500 leading-relaxed">Complete all rounds with the highest accuracy and speed before the timer runs out.</p>
                 </div>
                 <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
                   <h2 className="text-purple-400 font-bold mb-2 uppercase tracking-widest">🏆 Final Outcome</h2>
-                  <p className="text-slate-500 leading-relaxed">Your neural efficiency will be recorded on the Global Operative Registry.</p>
+                  <p className="text-slate-500 leading-relaxed">Your results will be recorded on the leaderboard for ranking.</p>
                 </div>
               </div>
             </div>
@@ -1655,7 +1733,7 @@ export default function GameUI() {
                 onClick={() => setPhase("instructions")}
                 className="group relative px-12 py-4 bg-cyan-700 hover:bg-cyan-600 border border-cyan-400 text-cyan-50 font-mono font-bold text-lg rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.4)] hover:shadow-[0_0_30px_rgba(8,145,178,0.6)]"
               >
-                Access Protocols
+                View Rules
               </button>
             </div>
           </div>
@@ -1671,9 +1749,9 @@ export default function GameUI() {
             <div className="flex items-center justify-between mb-8 border-b border-slate-700 pb-6">
               <div>
                 <h1 className="text-3xl font-black text-amber-500 flex items-center gap-3 uppercase tracking-wider drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">
-                  ⚠️ Operation Parameters
+                  ⚠️ Game Rules
                 </h1>
-                <p className="text-slate-400 mt-2 text-sm font-mono tracking-wide">Review simulation rules before initializing terminal uplink.</p>
+                <p className="text-slate-400 mt-2 text-sm font-mono tracking-wide">Please read the rules before starting.</p>
               </div>
               <button onClick={() => setPhase("welcome")} className="text-slate-500 hover:text-slate-300 text-xs font-bold uppercase tracking-widest transition-colors font-mono">
                 [ ABORT & RETURN ]
@@ -1685,19 +1763,19 @@ export default function GameUI() {
 
                 <section className="bg-black/50 p-6 rounded border border-red-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                   <h2 className="text-md font-mono font-bold text-red-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-red-900/30 pb-2">
-                    ⏱️ Life Support Timer
+                    ⏱️ Timer
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Facility allows <strong className="text-slate-200">20 minutes total</strong> for all sectors.</li>
-                    <li>Timer activates upon terminal initialization.</li>
-                    <li>Countdown <strong className="text-red-400 font-bold">CANNOT BE PAUSED</strong>.</li>
-                    <li>Depletion results in immediate simulation failure.</li>
+                    <li>You have <strong className="text-slate-200">20 minutes total</strong> for all rounds.</li>
+                    <li>Timer starts when you begin the game.</li>
+                    <li>The timer <strong className="text-red-400 font-bold">CANNOT BE PAUSED</strong>.</li>
+                    <li>Running out of time ends the game immediately.</li>
                   </ul>
                 </section>
 
                 <section className="bg-black/50 p-6 rounded border border-amber-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                   <h2 className="text-md font-mono font-bold text-amber-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-amber-900/30 pb-2">
-                    🔁 Security Lockouts
+                    🔁 Attempt Limits
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
                     <li>Rounds 1-3 have <strong className="text-slate-200">unrestricted attempts</strong> within the master timer.</li>
@@ -1708,12 +1786,12 @@ export default function GameUI() {
 
                 <section className="bg-black/50 p-6 rounded border border-purple-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                   <h2 className="text-md font-mono font-bold text-purple-400 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-purple-900/30 pb-2">
-                    🚫 Anti-Cheat Protocols
+                    🚫 Fair Play Rules
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Focus loss (tab switching) is <strong className="text-purple-400 font-bold">STRICTLY PROHIBITED</strong>.</li>
-                    <li>Violations deduct <strong className="text-slate-200">15 seconds</strong> from life support.</li>
-                    <li>Copy/Paste functions are disabled on standard terminals.</li>
+                    <li>Switching tabs is <strong className="text-purple-400 font-bold">STRICTLY PROHIBITED</strong>.</li>
+                    <li>Each violation deducts <strong className="text-slate-200">15 seconds</strong> from your timer.</li>
+                    <li>Copy/Paste is disabled in the prompt input.</li>
                   </ul>
                 </section>
 
@@ -1722,10 +1800,10 @@ export default function GameUI() {
                     🔒 Persistence Rules
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Enter your <strong className="text-slate-200">real full name</strong> and approved <strong className="text-slate-200">@calfus.com</strong> email to unlock the terminal.</li>
-                    <li><strong className="text-slate-200">One attempt</strong> per operative identity.</li>
-                    <li>Terminal reboots (refresh) will <strong className="text-cyan-600 font-bold">NOT</strong> reset the timer.</li>
-                    <li>Connections resume from point of failure.</li>
+                    <li>Enter your <strong className="text-slate-200">real full name</strong> and approved <strong className="text-slate-200">@calfus.com</strong> email to start.</li>
+                    <li><strong className="text-slate-200">One attempt</strong> per player.</li>
+                    <li>Refreshing the page will <strong className="text-cyan-600 font-bold">NOT</strong> reset the timer.</li>
+                    <li>Your session will resume from where you left off.</li>
                   </ul>
                 </section>
               </div>
@@ -1743,7 +1821,7 @@ export default function GameUI() {
               </section>
 
               <div className="flex flex-col items-center justify-center pt-8 mt-6 border-t border-slate-800">
-                <p className="text-amber-500/80 text-xs font-mono uppercase tracking-widest mb-6 animate-pulse">Ensure stable uplink before proceeding.</p>
+                <p className="text-amber-500/80 text-xs font-mono uppercase tracking-widest mb-6 animate-pulse">Ready? Proceed to registration.</p>
                 <button
                   type="button"
                   onClick={() => setPhase("register")}
@@ -1771,7 +1849,7 @@ export default function GameUI() {
             <div className="flex flex-col gap-6 mt-8">
               <div className="text-center mb-2">
                 <h1 className="text-2xl font-black mb-2 text-cyan-400 tracking-widest uppercase drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
-                  Operative Login
+                  Player Login
                 </h1>
                 <p className="text-slate-500 text-xs font-mono uppercase tracking-wider">
                   Input your real name and approved @calfus.com email.
@@ -1785,7 +1863,7 @@ export default function GameUI() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Identity / Name</label>
+                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Full Name</label>
                   <input
                     type="text"
                     className="w-full p-4 bg-black/80 rounded border border-cyan-900/50 text-cyan-300 outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 font-mono text-sm shadow-[inset_0_0_10px_rgba(0,0,0,0.8)] transition-all"
@@ -1794,7 +1872,7 @@ export default function GameUI() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">Comm-Link / @calfus.com Email</label>
+                  <label className="text-[10px] text-cyan-600 font-mono uppercase tracking-widest ml-1 mb-1 block">@calfus.com Email</label>
                   <input
                     type="email"
                     className="w-full p-4 bg-black/80 rounded border border-cyan-900/50 text-cyan-300 outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 font-mono text-sm shadow-[inset_0_0_10px_rgba(0,0,0,0.8)] transition-all"
@@ -1810,7 +1888,7 @@ export default function GameUI() {
                 disabled={busy}
                 className="mt-4 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 disabled:bg-slate-800 disabled:border-slate-700 border border-cyan-400 text-cyan-50 py-4 rounded font-mono font-bold text-sm tracking-widest uppercase transition-all shadow-[0_0_15px_rgba(8,145,178,0.3)]"
               >
-                {busy ? "Establishing Uplink..." : "Initialize Sequence"}
+                {busy ? "Starting..." : "Start Game"}
               </button>
             </div>
           </div>
@@ -1827,13 +1905,113 @@ export default function GameUI() {
             {/* GAME HEADER */}
             <div className="flex justify-between items-end mb-2 border-b border-slate-700 pb-4 gap-4">
               <h2 className="text-xl md:text-2xl font-bold text-slate-200 font-mono drop-shadow-md">{headerTitle}</h2>
-              <div
-                className={`text-2xl md:text-3xl font-mono font-bold shrink-0 px-4 py-1 rounded border ${timeLeftSec < 60
-                    ? "text-red-500 bg-red-950/30 border-red-900/50 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"
-                    : "text-amber-500 bg-amber-950/20 border-amber-900/30 drop-shadow-[0_0_5px_rgba(245,158,11,0.4)]"
-                  }`}
-              >
-                {formatTime(timeLeftSec)}
+              <div className="flex items-center gap-3 shrink-0">
+                {/* HINT CLOUD */}
+                {hintAvailable && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setHintDismissed((d) => !d)}
+                      className={`text-xl transition-transform hover:scale-110 ${showHintCloud ? "animate-pulse" : "opacity-60 hover:opacity-100"}`}
+                      aria-label="Toggle hint"
+                      title="Hint available"
+                    >
+                      💡
+                    </button>
+                    {showHintCloud && (
+                      <div className="absolute top-10 right-0 z-30 w-72 bg-slate-950 border border-amber-600/50 rounded-xl shadow-[0_0_24px_rgba(245,158,11,0.2)] p-4">
+                        <div className="absolute -top-[9px] right-5 w-4 h-4 bg-slate-950 border-t border-l border-amber-600/50 rotate-45" />
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">💡</span>
+                            <h4 className="text-xs font-bold text-amber-400 uppercase tracking-widest">Hint</h4>
+                          </div>
+                          <button
+                            onClick={() => setHintDismissed(true)}
+                            className="text-slate-500 hover:text-white text-sm leading-none transition-colors"
+                            aria-label="Dismiss hint"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {roundNumber === 1 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">Prompting Techniques:</p>
+                            <p><span className="text-cyan-400">Role Prompting</span> — assigns a specific role to the AI (&ldquo;You are a...&rdquo;)</p>
+                            <p><span className="text-cyan-400">Chain of Thought</span> — asks the AI to reason step-by-step before answering</p>
+                            <p><span className="text-cyan-400">Few-Shot Prompting</span> — provides example input→output pairs to guide the AI</p>
+                            <p><span className="text-cyan-400">Output Constraints</span> — defines format, length, or structure rules for the response</p>
+                            <p><span className="text-cyan-400">Zero-Shot Prompting</span> — gives a task with no examples, no role, no constraints</p>
+                            <p><span className="text-cyan-400">Persona Prompting</span> — gives the AI a character or behavioral style to adopt</p>
+                            <p><span className="text-cyan-400">Negative Prompting</span> — tells the AI what NOT to do or include</p>
+                          </div>
+                        )}
+
+                        {roundNumber === 2 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">Check your prompt:</p>
+                            <p>✦ Did you add <span className="text-cyan-400">role prompting</span>? (e.g. &ldquo;You are a business analyst...&rdquo;)</p>
+                            <p>✦ Are all <span className="text-cyan-400">required sections</span> explicitly named? (Conflicts, Decisions, Dependencies, Next Steps)</p>
+                            <p>✦ Did you include a <span className="text-cyan-400">word limit</span> constraint? (e.g. &ldquo;in ≤90 words&rdquo;)</p>
+                            <p>✦ Are you asking for <span className="text-cyan-400">specific extraction</span>, not just &ldquo;summarize&rdquo;?</p>
+                          </div>
+                        )}
+
+                        {roundNumber === 3 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">Reverse-engineering tips:</p>
+                            <p>✦ Study the <span className="text-cyan-400">output structure</span> carefully — every section label is a clue</p>
+                            <p>✦ Start with a <span className="text-cyan-400">role</span> that matches the output domain (e.g. consultant, engineer)</p>
+                            <p>✦ <span className="text-cyan-400">Name every section</span> you see in the output explicitly in your prompt</p>
+                            <p>✦ Mirror the <span className="text-cyan-400">format</span> — if the output uses bullets, ask for bullets</p>
+                            <p>✦ Be specific about the <span className="text-cyan-400">topic</span>, not just &ldquo;write about this&rdquo;</p>
+                          </div>
+                        )}
+
+                        {roundNumber === 4 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">Optimization tips (≤15 words):</p>
+                            <p>✦ <span className="text-cyan-400">Every word counts</span> — cut filler like &ldquo;please&rdquo;, &ldquo;can you&rdquo;, &ldquo;I want&rdquo;</p>
+                            <p>✦ The word <span className="text-cyan-400">&ldquo;analogy&rdquo;</span> must appear — it&apos;s the core requirement</p>
+                            <p>✦ Adding a <span className="text-cyan-400">role or audience</span> boosts quality without many extra words</p>
+                            <p>✦ Use <span className="text-cyan-400">imperative form</span>: &ldquo;Explain X using an analogy&rdquo; beats &ldquo;Can you explain X&rdquo;</p>
+                          </div>
+                        )}
+
+                        {roundNumber === 5 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">Structured prompt tips:</p>
+                            <p>✦ Explicitly say <span className="text-cyan-400">&ldquo;step-by-step&rdquo;</span> — this triggers chain-of-thought reasoning</p>
+                            <p>✦ Ask the AI to <span className="text-cyan-400">state constraints and rules first</span> before solving</p>
+                            <p>✦ Request a <span className="text-cyan-400">clearly labeled final answer</span> at the end</p>
+                            <p>✦ Add a <span className="text-cyan-400">role</span> like &ldquo;logical problem solver&rdquo; to sharpen the reasoning style</p>
+                          </div>
+                        )}
+
+                        {roundNumber === 6 && (
+                          <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
+                            <p className="text-amber-400/90 font-bold mb-2">What is a meta-prompt?</p>
+                            <p className="text-slate-400 mb-2">A <span className="text-cyan-400">meta-prompt</span> is a prompt that instructs an AI to <span className="text-cyan-400">write another prompt</span> — not to answer the question directly, but to generate a detailed, structured prompt that someone else could use.</p>
+                            <p className="text-amber-400/80 font-bold mt-3 mb-1">How to write one:</p>
+                            <p>✦ Tell the AI what <span className="text-cyan-400">role, tone, and sections</span> the final prompt must include</p>
+                            <p>✦ Specify <span className="text-cyan-400">output constraints</span> the final prompt should enforce (length, format, structure)</p>
+                            <p>✦ Think: what would a <span className="text-cyan-400">perfect prompt</span> for this scenario contain? Then instruct the AI to build exactly that</p>
+                            <p>✦ The more <span className="text-cyan-400">specific and detailed</span> your meta-prompt, the stronger the compiled prompt will be</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div
+                  className={`text-2xl md:text-3xl font-mono font-bold px-4 py-1 rounded border ${timeLeftSec < 60
+                      ? "text-red-500 bg-red-950/30 border-red-900/50 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"
+                      : "text-amber-500 bg-amber-950/20 border-amber-900/30 drop-shadow-[0_0_5px_rgba(245,158,11,0.4)]"
+                    }`}
+                >
+                  {formatTime(timeLeftSec)}
+                </div>
               </div>
             </div>
 
@@ -1921,7 +2099,7 @@ export default function GameUI() {
                   {currentRoundData.expectedOutput && roundNumber !== 1 && (
                     <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                       <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                        Target Signature
+                        Target Output
                       </h3>
                       <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
                         {currentRoundData.expectedOutput}
@@ -1934,17 +2112,17 @@ export default function GameUI() {
                 <div className="flex flex-col gap-4">
                   <div className="flex-grow flex flex-col">
                     <div className="flex justify-between text-xs font-mono text-slate-500 mb-2 px-1 uppercase tracking-wider">
-                      <span>Lock threshold: {getTargetScore(roundNumber)}.00</span>
+                      <span>Pass threshold: {getTargetScore(roundNumber)}%</span>
                       <span className={roundNumber >= 5 && attemptsRemaining <= 1 ? "text-red-500 font-bold bg-red-950/50 px-2 py-0.5 rounded border border-red-900" : ""}>
-                        {attemptsRemaining < 0 ? "Attempts: Unrestricted" : `Sec-Attempts: ${attemptsRemaining}`}
+                        {attemptsRemaining < 0 ? "Attempts: Unlimited" : `Attempts Left: ${attemptsRemaining}`}
                       </span>
                     </div>
 
                     {currentRoundData.type === "CLASSIFY" ? (
                       <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90">
-                        <h3 className="text-sm font-bold text-amber-500 mb-2 uppercase tracking-widest">Identify Anomaly Signatures</h3>
+                        <h3 className="text-sm font-bold text-amber-500 mb-2 uppercase tracking-widest">Classify Each Section</h3>
                         <p className="text-xs text-slate-500 mb-6 pb-4 border-b border-slate-800 font-mono">
-                          {"// Terminal will auto-compile upon full selection"}
+                          {"// Will auto-submit once all sections are classified"}
                         </p>
                         <div className="font-mono text-sm text-slate-300 leading-relaxed space-y-6">
                           {currentRoundData.promptParts?.map((part) => {
@@ -1960,7 +2138,7 @@ export default function GameUI() {
                                     onChange={(e) => handleDropdownChange(part.id, e.target.value)}
                                     disabled={inputLocked}
                                   >
-                                    <option value="" disabled>Select Override...</option>
+                                    <option value="" disabled>Select an option...</option>
                                     {part.options.map((opt) => (
                                       <option key={opt} value={opt}>{opt}</option>
                                     ))}
@@ -2023,7 +2201,7 @@ export default function GameUI() {
                     ) : (
                       <textarea
                         className="w-full grow p-4 bg-black/80 rounded border border-slate-700 text-slate-300 outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none min-h-[250px] shadow-[inset_0_0_30px_rgba(0,0,0,1)] disabled:opacity-50 transition-colors leading-relaxed"
-                        placeholder="Draft code sequence... (Copy/Paste disabled)"
+                        placeholder="Type your prompt here... (Copy/Paste disabled)"
                         value={promptInput}
                         onChange={(e) => setPromptInput(e.target.value)}
                         disabled={inputLocked}
@@ -2049,45 +2227,119 @@ export default function GameUI() {
                       className="bg-slate-800 hover:bg-cyan-900/50 border border-slate-700 hover:border-cyan-700 text-slate-400 hover:text-cyan-300 disabled:bg-black/50 disabled:border-slate-800 disabled:text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase transition-all shadow-lg"
                     >
                       {lastResult?.passed
-                        ? "Lock Bypassed..."
+                        ? "Passed! Continue..."
                         : busy
-                          ? "Transmitting..."
+                          ? "Submitting..."
                           : currentRoundData.type === "BONUS"
-                            ? "Execute Generated Prompt"
-                            : "Initiate Override"}
+                            ? "Submit Prompt"
+                            : "Submit"}
                     </button>
                   )}
 
                   {lastResult && (
                     <div className={`p-4 rounded border-l-4 transition-all duration-300 ${lastResult.passed ? "bg-green-950/30 border-green-500" : "bg-red-950/30 border-red-500"}`}>
                       <h3 className={`font-mono font-bold text-sm uppercase tracking-widest mb-1 ${lastResult.passed ? "text-green-500" : "text-red-500"}`}>
-                        {lastResult.passed ? "✅ Override Successful" : "❌ Payload Rejected"}
+                        {lastResult.passed ? "✅ Correct! Round Passed" : "❌ Incorrect. Try Again"}
                       </h3>
                       <div className="text-xs font-mono text-slate-400">Match Accuracy: {lastResult.score.toFixed(2)}%</div>
                     </div>
+                  )}
+
+                  {previousAttempt && !lastResult?.passed && currentRoundData.type !== "CLASSIFY" && currentRoundData.type !== "BONUS" && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviousOutput(true)}
+                      className="self-start flex items-center gap-2 px-3 py-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700 hover:border-cyan-800 text-slate-400 hover:text-cyan-300 rounded text-xs font-mono uppercase tracking-wider transition-all"
+                    >
+                      <span className="text-cyan-700">↩</span> View Previous Response
+                    </button>
                   )}
                 </div>
               </div>
 
               {currentRoundData.type !== "CLASSIFY" && (
                 <div className="hidden md:flex w-12 bg-black/80 border border-slate-800 rounded flex-col justify-end items-center relative overflow-hidden shrink-0 shadow-[inset_0_0_20px_rgba(0,0,0,1)] py-4 min-h-[280px]">
+                  {/* Pass threshold line */}
                   <div className="absolute w-full h-[1px] bg-amber-500/50 z-10 shadow-[0_0_10px_rgba(245,158,11,1)]" style={{ bottom: `${getTargetScore(roundNumber)}%` }}>
                     <span className="absolute -top-5 right-1 text-[10px] font-mono text-amber-500">{getTargetScore(roundNumber)}</span>
                   </div>
 
+                  {/* Fill bar */}
                   <div
-                    className={`w-full transition-all duration-1000 ease-out flex items-start justify-center pt-2 shadow-[0_-10px_20px_rgba(0,0,0,0.8)_inset] ${currentAccuracy >= getTargetScore(roundNumber) ? "bg-green-900/50" : "bg-cyan-900/30"}`}
-                    style={{ height: `${currentAccuracy}%` }}
+                    className={`w-full flex items-start justify-center pt-2 shadow-[0_-10px_20px_rgba(0,0,0,0.8)_inset] ${
+                      showPassAnimation
+                        ? "bg-green-400/70 transition-all duration-300 ease-out"
+                        : currentAccuracy >= getTargetScore(roundNumber)
+                          ? "bg-green-900/50 transition-all duration-1000 ease-out"
+                          : "bg-cyan-900/30 transition-all duration-1000 ease-out"
+                    }`}
+                    style={{ height: showPassAnimation ? "100%" : `${currentAccuracy}%` }}
                   >
-                    {currentAccuracy > 10 && (
-                      <span className="text-[10px] font-mono font-bold text-slate-300 mt-1 drop-shadow-md">
-                        {Math.round(currentAccuracy)}%
+                    {(showPassAnimation || currentAccuracy > 10) && (
+                      <span className={`text-[10px] font-mono font-bold mt-1 drop-shadow-md ${showPassAnimation ? "text-white animate-pulse" : "text-slate-300"}`}>
+                        {showPassAnimation ? "✓" : `${Math.round(currentAccuracy)}%`}
                       </span>
                     )}
                   </div>
+
+                  {/* Glow overlay when passing */}
+                  {showPassAnimation && (
+                    <div className="absolute inset-0 pointer-events-none animate-pulse"
+                      style={{ boxShadow: "inset 0 0 30px rgba(74,222,128,0.4)" }} />
+                  )}
+
                   <div className="absolute bottom-4 text-[10px] uppercase tracking-widest text-slate-600 rotate-180 font-bold font-mono" style={{ writingMode: "vertical-rl" }}>Match %</div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- PREVIOUS ATTEMPT MODAL -------------------- */}
+      {showPreviousOutput && previousAttempt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setShowPreviousOutput(false)}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[80vh] bg-slate-950 border border-slate-700 rounded-xl shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: title + score + close */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-4">
+                <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                  Previous Response
+                </h2>
+                <span className="text-xs font-mono font-bold text-red-400 bg-red-950/40 border border-red-900/50 px-2 py-0.5 rounded">
+                  Score: {previousAttempt.score.toFixed(1)}%
+                </span>
+              </div>
+              <button
+                onClick={() => setShowPreviousOutput(false)}
+                className="text-slate-500 hover:text-slate-200 text-xl leading-none transition-colors font-mono"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* AI output */}
+            <pre className="flex-1 overflow-y-auto px-6 py-5 text-sm font-mono text-green-300/80 whitespace-pre-wrap leading-relaxed">
+              {previousAttempt.output || "No output was captured for this attempt."}
+            </pre>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-slate-800 shrink-0 flex justify-between items-center bg-slate-950/60">
+              <p className="text-[10px] text-slate-600 font-mono">Revise your prompt in the editor to improve your score</p>
+              <button
+                onClick={() => setShowPreviousOutput(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs font-mono uppercase tracking-wider transition-all"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -2105,9 +2357,9 @@ export default function GameUI() {
           {(() => {
             const STATUS_CARDS: Record<string, { title: string; body: string; statusLine: string; border: string; titleColor: string; bodyColor: string; statusColor: string; statusBorder: string }> = {
               COMPLETED_WITH_BONUS: {
-                title: "🎖 Mission Status: Exceptional Success",
-                body: "Operative, all primary objectives have been completed successfully, including the advanced bonus protocol. You demonstrated exceptional reasoning, prompt engineering precision, and adaptability under mission constraints.\n\nMission Control has recorded your performance for final ranking assessment. Your ability to navigate ambiguity, optimize instructions, and overcome hidden constraints marks a highly successful operation.",
-                statusLine: "Mission Accomplished — Enhanced Clearance Achieved.",
+                title: "🎖 Result: Completed with Bonus!",
+                body: "Congratulations! You completed all rounds, including the bonus challenge. You demonstrated strong prompt engineering skills and great attention to detail throughout the game.\n\nYour results have been recorded and will appear on the leaderboard.",
+                statusLine: "All rounds completed, including the bonus.",
                 border: "border-emerald-700",
                 titleColor: "text-emerald-400",
                 bodyColor: "text-emerald-200/70",
@@ -2115,9 +2367,9 @@ export default function GameUI() {
                 statusBorder: "border-emerald-800/50",
               },
               COMPLETED: {
-                title: "✅ Mission Status: Core Objectives Completed",
-                body: "Operative, all primary mission objectives have been completed successfully. The advanced bonus protocol was initiated but could not be fully resolved within operational constraints.\n\nYour performance across the core mission has been recorded and will contribute toward final ranking assessment. Successfully reaching this stage demonstrates strong strategic prompting capability.",
-                statusLine: "Mission Completed — Bonus Protocol Incomplete.",
+                title: "✅ Result: All Rounds Completed",
+                body: "Well done! You completed all the main rounds. The bonus round was unlocked but could not be fully resolved within the time limit.\n\nYour performance has been recorded and will appear on the leaderboard.",
+                statusLine: "Main rounds completed.",
                 border: "border-cyan-700",
                 titleColor: "text-cyan-400",
                 bodyColor: "text-cyan-200/70",
@@ -2125,9 +2377,9 @@ export default function GameUI() {
                 statusBorder: "border-cyan-800/50",
               },
               FAILED: {
-                title: "⚠️ Mission Status: Operational Failure",
-                body: "Operative, maximum authorized attempts for this mission phase have been exhausted. Further progression has been terminated under system protocol.\n\nMission Control has recorded your progress and completed objectives up to this point. Precision and strategic execution remain critical under restricted operational limits.",
-                statusLine: "Mission Terminated — Attempt Threshold Reached.",
+                title: "⚠️ Result: Attempts Exhausted",
+                body: "You used all available attempts for this round without reaching the required score. The game has ended.\n\nYour progress up to this point has been recorded on the leaderboard.",
+                statusLine: "Game ended — attempt limit reached.",
                 border: "border-red-800",
                 titleColor: "text-red-400",
                 bodyColor: "text-red-200/70",
@@ -2135,9 +2387,9 @@ export default function GameUI() {
                 statusBorder: "border-red-900/50",
               },
               TIME_OVER: {
-                title: "⏰ Mission Status: Time Limit Exceeded",
-                body: "Operative, the mission timer has expired before objective completion. Under field conditions, effective decision-making must balance both precision and speed.\n\nYour operational progress has been recorded and will be included in mission performance analysis.",
-                statusLine: "Mission Incomplete — Time Window Closed.",
+                title: "⏰ Result: Time Limit Reached",
+                body: "The 20-minute time limit expired before you completed all rounds. Good attempt!\n\nYour progress has been recorded and will appear on the leaderboard.",
+                statusLine: "Game ended — time ran out.",
                 border: "border-amber-700",
                 titleColor: "text-amber-400",
                 bodyColor: "text-amber-200/70",
@@ -2145,9 +2397,9 @@ export default function GameUI() {
                 statusBorder: "border-amber-800/50",
               },
               DISQUALIFIED: {
-                title: "🚫 Mission Status: Protocol Violation",
-                body: "Operative, this mission has been terminated due to a detected protocol violation. Mission integrity and operational fairness must be maintained across all participants.\n\nMission Control has documented progress completed prior to termination for administrative review.",
-                statusLine: "Access Revoked — Protocol Breach Detected.",
+                title: "🚫 Result: Disqualified",
+                body: "Your session was ended due to repeated fair play violations (tab switching or copy-paste). These rules exist to keep the competition fair for everyone.\n\nYour progress up to the point of disqualification has been recorded for review.",
+                statusLine: "Session ended — fair play violation.",
                 border: "border-red-900",
                 titleColor: "text-red-500",
                 bodyColor: "text-red-300/70",
@@ -2295,7 +2547,7 @@ export default function GameUI() {
                 <div className="screen-glare absolute inset-0 rounded-xl" />
                 <div className="relative z-10">
                   <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
-                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> {regionLabel} Operative Registry
+                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> {regionLabel} Leaderboard
                   </h2>
 
                   {playerRank >= 0 && (
@@ -2311,10 +2563,10 @@ export default function GameUI() {
                         <thead className="bg-slate-900/80 sticky top-0 z-10">
                           <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
                             <th className="p-3 font-bold w-10">#</th>
-                            <th className="p-3 font-bold">Operative</th>
-                            <th className="p-3 font-bold text-center">Sectors</th>
+                            <th className="p-3 font-bold">Player</th>
+                            <th className="p-3 font-bold text-center">Rounds</th>
                             <th className="p-3 font-bold text-center">Duration</th>
-                            <th className="p-3 font-bold text-center">Precision</th>
+                            <th className="p-3 font-bold text-center">Accuracy</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50 bg-black/40">
@@ -2322,7 +2574,7 @@ export default function GameUI() {
                             const isMe = p.email === player.email || p.name === player.name;
                             const timeSec = p.completedAt && p.startedAt
                               ? Math.round((p.completedAt - p.startedAt) / 1000)
-                              : 0;
+                              : null;
                             return (
                               <tr
                                 key={p.playerId}
@@ -2337,9 +2589,12 @@ export default function GameUI() {
                                   <span className={isMe ? "text-amber-300 font-bold" : "text-slate-300 font-bold"}>
                                     {p.name}{isMe ? " (You)" : ""}
                                   </span>
+                                  {!p.completedAt && (
+                                    <span className="ml-2 text-[10px] text-yellow-600 uppercase tracking-wider font-mono">Active</span>
+                                  )}
                                 </td>
                                 <td className="p-3 text-slate-400 text-center">{p.roundsPlayed}</td>
-                                <td className="p-3 text-slate-400 text-center">{formatTime(timeSec)}</td>
+                                <td className="p-3 text-slate-400 text-center">{timeSec !== null ? formatTime(timeSec) : "—"}</td>
                                 <td className="p-3 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
                               </tr>
                             );

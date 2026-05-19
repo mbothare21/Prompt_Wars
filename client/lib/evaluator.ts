@@ -292,6 +292,48 @@ function checkConstraints(
   return total === 0 ? 1 : score / total;
 }
 
+// ── Prompt constraint coverage ────────────────────────────────────────────────
+// Checks whether the player's prompt explicitly addresses the constraints shown
+// to them in the UI. Missing constraint coverage → deducted marks.
+
+function scorePromptConstraintCoverage(constraints: unknown, prompt: string): number {
+  if (constraints == null) return 1;
+  if (!isPlainObject(constraints)) return 1;
+
+  const c = constraints as ObjectConstraints;
+  let score = 0;
+  let total = 0;
+  const promptLower = prompt.toLowerCase();
+
+  if (c.requiredSections?.length) {
+    total++;
+    const mentioned = c.requiredSections.filter((s) =>
+      promptLower.includes(s.toLowerCase())
+    ).length;
+    score += mentioned / c.requiredSections.length;
+  }
+
+  if (c.maxWords != null) {
+    total++;
+    if (/\b(max|maximum|word|brief|concise|short|limit|\d+\s*word)/i.test(prompt)) {
+      score += 1;
+    }
+  }
+
+  if (c.requireSteps) {
+    total++;
+    if (
+      /\b(step|steps|numbered|systematically|sequentially|one by one|breakdown)\b/i.test(
+        prompt
+      )
+    ) {
+      score += 1;
+    }
+  }
+
+  return total === 0 ? 1 : score / total;
+}
+
 // ── Structure heuristics ──────────────────────────────────────────────────────
 
 function getBrevityScore(prompt: string): number {
@@ -444,11 +486,13 @@ async function scoreImproveOutcome(
   prompt: string,
   output: string
 ) {
-  const { quality: qualityScore, prompt: promptScore } = await scoreCombined(
+  const { quality: qualityScore, prompt: rawPromptScore } = await scoreCombined(
     prompt,
     output
   );
   const constraintScore = checkConstraints(round.constraints, prompt, output);
+  const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
   const similarityScore = round.expectedOutput
     ? await getSimilarity(output, round.expectedOutput)
     : 1;
@@ -472,11 +516,13 @@ async function scoreReverseOutcome(
   output: string
 ) {
   const target = round.expectedOutput || "";
-  const [similarity, promptScore] = await Promise.all([
+  const [similarity, rawPromptScore] = await Promise.all([
     getSimilarity(output, target),
     Promise.resolve(scorePrompt(prompt)),
   ]);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
+  const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
   const taskOutputScore = 0.8 * similarity + 0.2 * constraintScore;
 
   return {
@@ -521,8 +567,10 @@ async function scoreStructuredOutcome(
 ) {
   const reasoningScore = scoreReasoning(output);
   const structureScore = evaluateStructure(output);
-  const promptScore = scorePrompt(prompt);
+  const rawPromptScore = scorePrompt(prompt);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
+  const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
   const taskOutputScore =
     0.45 * reasoningScore +
     0.35 * structureScore +

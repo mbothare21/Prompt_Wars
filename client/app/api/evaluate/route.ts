@@ -75,6 +75,13 @@ export async function POST(req: Request) {
   }
 
   if (session.completed || session.status === "DISQUALIFIED") {
+    console.log("[evaluate] GAME_ALREADY_COMPLETED", {
+      sessionId,
+      status: session.status,
+      completed: session.completed,
+      currentRound: session.currentRound,
+      player: session.player.email ?? session.player.name,
+    });
     return Response.json({
       status: "GAME_ALREADY_COMPLETED",
       sessionStatus: session.status,
@@ -82,6 +89,13 @@ export async function POST(req: Request) {
   }
 
   if (isTimeUp(session)) {
+    console.log("[evaluate] GAME_OVER:TIME_UP", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      currentRound: session.currentRound,
+      elapsedMs: Date.now() - session.startTime,
+      timeLimitMs: session.timeLimit,
+    });
     session.status = "TIME_UP";
     session.completed = true;
     session.player.completed = true;
@@ -129,6 +143,13 @@ export async function POST(req: Request) {
   const maxAttempts = ATTEMPT_LIMITS[roundNum] ?? Infinity;
 
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {
+    console.log("[evaluate] NO_ATTEMPTS_LEFT:pre-eval", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      round: roundNum,
+      attemptsUsed: session.attemptsPerRound[roundNum],
+      maxAttempts,
+    });
     session.status = "FAILED";
     session.completed = true;
     session.player.completed = true;
@@ -268,6 +289,7 @@ export async function POST(req: Request) {
 
       return Response.json({
         status: "GAME_COMPLETED",
+        gameStatus: completedStatus,
         bonusUnlocked: session.bonusUnlocked,
         highScoreBonus,
         ...result,
@@ -280,10 +302,15 @@ export async function POST(req: Request) {
     await persistProgressSnapshot(session).catch((e) =>
       console.error("[evaluate] MongoDB progress snapshot error:", e)
     );
+    const remainingOnPass = Math.max(
+      0,
+      (session.timeLimit - (session.penaltyTimeSec ?? 0) * 1000) - (Date.now() - session.startTime)
+    );
     return Response.json({
       status: "ROUND_PASSED",
       nextRound: session.currentRound,
       attemptsThisRound: session.attemptsPerRound[roundNum],
+      remainingTime: remainingOnPass,
       ...result,
       finalScore,
       progress,
@@ -294,6 +321,14 @@ export async function POST(req: Request) {
     Number.isFinite(maxAttempts) &&
     (session.attemptsPerRound[roundNum] ?? 0) >= maxAttempts
   ) {
+    console.log("[evaluate] NO_ATTEMPTS_LEFT:post-eval", {
+      sessionId,
+      player: session.player.email ?? session.player.name,
+      round: roundNum,
+      attemptsUsed: session.attemptsPerRound[roundNum],
+      maxAttempts,
+      finalScore,
+    });
     session.status = "FAILED";
     session.completed = true;
     session.player.completed = true;
@@ -322,6 +357,10 @@ export async function POST(req: Request) {
   await persistProgressSnapshot(session).catch((e) =>
     console.error("[evaluate] MongoDB progress snapshot error:", e)
   );
+  const remainingOnFail = Math.max(
+    0,
+    (session.timeLimit - (session.penaltyTimeSec ?? 0) * 1000) - (Date.now() - session.startTime)
+  );
   return Response.json({
     status: "ROUND_FAILED",
     attemptsThisRound: session.attemptsPerRound[roundNum],
@@ -329,6 +368,7 @@ export async function POST(req: Request) {
       ? Math.max(0, maxAttempts - session.attemptsPerRound[roundNum])
       : -1,
     maxAttemptsThisRound: Number.isFinite(maxAttempts) ? maxAttempts : -1,
+    remainingTime: remainingOnFail,
     ...result,
     finalScore,
     progress,
