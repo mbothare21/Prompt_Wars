@@ -23,7 +23,7 @@ import { compareCompetitiveStanding } from "@/lib/ranking";
 import { getAdminPreviewRound, ROUND_SET_COUNTS } from "@/lib/generateRounds";
 import type { PromptPart } from "@/lib/types";
 
-type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "playing" | "bonus" | "finished";
+type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "orientation" | "playing" | "bonus" | "finished";
 
 type RoundPayload = {
   status: string;
@@ -436,8 +436,8 @@ export default function GameUI() {
   // ── localStorage: persist state on changes ──
   useEffect(() => {
     if (!isRestored) return;
-    // Don't persist admin phases
-    if (phase === "admin-login" || phase === "admin-view") return;
+    // Don't persist admin or pre-session phases
+    if (phase === "admin-login" || phase === "admin-view" || phase === "orientation") return;
     localStorage.setItem(
       "escapeRoom_state",
       JSON.stringify({
@@ -649,21 +649,19 @@ export default function GameUI() {
   };
 
 
-  const startGame = async () => {
+  // Step 1: validate + admin check → orientation (no session created yet, timer not started)
+  const proceedToOrientation = async () => {
     if (!player.name.trim() || !player.email.trim()) {
       setError("Please enter your name and email.");
       return;
     }
     setError(null);
-    setMessage(null);
-    setLastResult(null);
-    setBusy(true);
-    allowTimeUpRef.current = false;
 
     if (
       player.name.trim().toLowerCase() === "admin" &&
       player.email.trim().toLowerCase() === "admin@prompt.com"
     ) {
+      setBusy(true);
       try {
         const adminRes = await fetch("/api/admin/login", {
           method: "POST",
@@ -671,16 +669,9 @@ export default function GameUI() {
           body: JSON.stringify({ name: player.name.trim(), email: player.email.trim() }),
         });
 
-        if (!adminRes.ok) {
-          setError("Admin terminal access denied.");
-          return;
-        }
-
+        if (!adminRes.ok) { setError("Admin terminal access denied."); return; }
         const adminData = (await adminRes.json()) as { token?: string };
-        if (!adminData.token) {
-          setError("Admin terminal access denied.");
-          return;
-        }
+        if (!adminData.token) { setError("Admin terminal access denied."); return; }
 
         setCurrentAdminToken(adminData.token);
         setPhase("admin-view");
@@ -694,6 +685,18 @@ export default function GameUI() {
         setBusy(false);
       }
     }
+
+    // Normal player — show interface tour before starting the timer
+    setPhase("orientation");
+  };
+
+  // Step 2: create session + start timer (called from orientation "I'm Ready" button)
+  const startGame = async () => {
+    setError(null);
+    setMessage(null);
+    setLastResult(null);
+    setBusy(true);
+    allowTimeUpRef.current = false;
 
     try {
       const res = await fetch("/api/start-game", {
@@ -715,14 +718,17 @@ export default function GameUI() {
 
       if (!res.ok) {
         setError(data.error ?? `Request failed (${res.status}).`);
+        setPhase("register");
         return;
       }
       if (data.status === "ALREADY_PLAYED") {
         setError(data.message ?? "You have already played this game.");
+        setPhase("register");
         return;
       }
       if (!data.sessionId) {
         setError(data.error ?? "Could not initialize sequence.");
+        setPhase("register");
         return;
       }
 
@@ -891,6 +897,24 @@ export default function GameUI() {
 
       const status = data.status as string | undefined;
 
+      // Extract score early so all terminal paths can record it
+      const finalScore = (data.finalScore as number | undefined) ?? 0;
+
+      // Helper: record this round's score in stats regardless of how the round ends
+      const recordRoundScore = (score: number) => {
+        setStats((prev) => {
+          const nextAccuracies = [...prev.accuracies];
+          nextAccuracies[roundNumber - 1] = Math.max(nextAccuracies[roundNumber - 1] ?? 0, score);
+          const attThisRound = (data.attemptsThisRound as number | undefined)
+            ?? ((prev.attemptsPerRound[roundNumber] ?? 0) + 1);
+          return {
+            ...prev,
+            accuracies: nextAccuracies,
+            attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
+          };
+        });
+      };
+
       if (status === "GAME_OVER" && data.reason === "TIME_UP") {
         setStats((prev) => ({ ...prev, terminalStatus: "TIME_OVER" }));
         finishGame("Time's up!");
@@ -923,16 +947,18 @@ export default function GameUI() {
       }
 
       if (status === "NO_ATTEMPTS_LEFT") {
-        setError("No attempts left. Game over.");
+        // Record score if the post-eval path ran (has finalScore)
+        if (typeof data.finalScore === "number") {
+          recordRoundScore(finalScore);
+        }
         setStats((prev) => ({
           ...prev,
           terminalStatus: roundNumber >= TOTAL_ROUNDS ? "COMPLETED" : "FAILED",
         }));
+        setError("No attempts left. Game over.");
         finishGame();
         return;
       }
-
-      const finalScore = (data.finalScore as number | undefined) ?? 0;
 
       setStats((prev) => {
         const nextAccuracies = [...prev.accuracies];
@@ -1794,9 +1820,9 @@ export default function GameUI() {
                     🔁 Attempt Limits
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Rounds 1-3 have <strong className="text-slate-200">unrestricted attempts</strong> within the master timer.</li>
-                    <li>Round 4 allows <strong className="text-slate-200">3 attempts</strong>, round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
-                    <li>Exhausting the capped rounds ends the run immediately.</li>
+                    <li>Round 1 allows <strong className="text-slate-200">5 attempts</strong>. Rounds 2, 3, and 4 allow <strong className="text-slate-200">3 attempts</strong> each.</li>
+                    <li>Round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
+                    <li>Exhausting attempts on any round ends the game immediately.</li>
                   </ul>
                 </section>
 
@@ -1900,13 +1926,202 @@ export default function GameUI() {
 
               <button
                 type="button"
-                onClick={() => void startGame()}
+                onClick={() => void proceedToOrientation()}
                 disabled={busy}
                 className="mt-4 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 disabled:bg-slate-800 disabled:border-slate-700 border border-cyan-400 text-cyan-50 py-4 rounded font-mono font-bold text-sm tracking-widest uppercase transition-all shadow-[0_0_15px_rgba(8,145,178,0.3)]"
               >
-                {busy ? "Starting..." : "Start Game"}
+                {busy ? "Verifying..." : "Start Game"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORIENTATION SCREEN */}
+      {phase === "orientation" && (
+        <div className="w-full max-w-6xl terminal-panel p-6 md:p-8 rounded-xl relative shadow-[0_0_50px_rgba(0,0,0,0.9)]">
+          <div className="screen-glare absolute inset-0 rounded-xl" />
+          <div className="relative z-10 flex flex-col gap-6">
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-700 pb-4">
+              <div>
+                <h1 className="text-xl font-black text-cyan-400 tracking-widest uppercase drop-shadow-[0_0_10px_rgba(34,211,238,0.4)]">
+                  Interface Overview
+                </h1>
+                <p className="text-slate-500 text-xs font-mono mt-1 uppercase tracking-wider">
+                  Learn what each element does — the timer starts only when you click Ready.
+                </p>
+              </div>
+              <button
+                onClick={() => { setError(null); setPhase("register"); }}
+                className="text-slate-600 hover:text-slate-400 text-[10px] font-mono uppercase tracking-widest transition-colors"
+              >
+                [ Back ]
+              </button>
+            </div>
+
+            {/* Main: legend (left) + mock interface (right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+
+              {/* LEFT: Numbered callout cards */}
+              <div className="lg:col-span-2 space-y-2.5 order-2 lg:order-1">
+
+                {/* ① Mission Parameters */}
+                <div className="flex gap-3 p-3 rounded border border-amber-900/40 bg-amber-950/10">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900/60 border border-amber-700/50 flex items-center justify-center text-[10px] font-bold text-amber-400 font-mono mt-0.5">1</span>
+                  <div>
+                    <p className="text-xs font-bold text-amber-400 mb-0.5">📋 Mission Parameters</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">The challenge for each round. Read it carefully — your prompt must address exactly what is asked.</p>
+                  </div>
+                </div>
+
+                {/* ② System Constraints */}
+                <div className="flex gap-3 p-3 rounded border border-cyan-900/40 bg-cyan-950/10">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-cyan-900/60 border border-cyan-700/50 flex items-center justify-center text-[10px] font-bold text-cyan-400 font-mono mt-0.5">2</span>
+                  <div>
+                    <p className="text-xs font-bold text-cyan-400 mb-0.5">🔧 System Constraints</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Rules your prompt must follow: word limits, required sections, output format. Breaking these lowers your score.</p>
+                  </div>
+                </div>
+
+                {/* ③ Hint */}
+                <div className="flex gap-3 p-3 rounded border border-amber-900/30 bg-black/30">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900/40 border border-amber-700/40 flex items-center justify-center text-[10px] font-bold text-amber-500 font-mono mt-0.5">3</span>
+                  <div>
+                    <p className="text-xs font-bold text-amber-500 mb-0.5">💡 Hint</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Click the lightbulb icon in the header for round-specific tips. Each round has its own tailored guidance.</p>
+                  </div>
+                </div>
+
+                {/* ④ Attempts & Threshold */}
+                <div className="flex gap-3 p-3 rounded border border-red-900/40 bg-red-950/10">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-red-900/60 border border-red-700/50 flex items-center justify-center text-[10px] font-bold text-red-400 font-mono mt-0.5">4</span>
+                  <div>
+                    <p className="text-xs font-bold text-red-400 mb-0.5">📊 Attempts &amp; Pass Threshold</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Shows how many tries you have left and the minimum score required to advance. Exhaust all attempts and the game ends.</p>
+                  </div>
+                </div>
+
+                {/* ⑤ Prompt Input */}
+                <div className="flex gap-3 p-3 rounded border border-slate-700/50 bg-slate-900/20">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-300 font-mono mt-0.5">5</span>
+                  <div>
+                    <p className="text-xs font-bold text-slate-300 mb-0.5">✍️ Prompt Input</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Type your engineered prompt here. Paste is disabled — write your prompt from scratch and hit Submit.</p>
+                  </div>
+                </div>
+
+                {/* ⑥ AI Response Modal */}
+                <div className="flex gap-3 p-3 rounded border border-green-900/40 bg-green-950/10">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-green-900/60 border border-green-700/50 flex items-center justify-center text-[10px] font-bold text-green-400 font-mono mt-0.5">6</span>
+                  <div>
+                    <p className="text-xs font-bold text-green-400 mb-0.5">🤖 AI Response Modal</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">After submitting, the AI&apos;s response and your score appear here. Green means you passed. Read it to refine your next attempt.</p>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* RIGHT: Annotated mock game interface */}
+              <div className="lg:col-span-3 order-1 lg:order-2 space-y-3 bg-black/50 rounded-xl border border-slate-700/60 p-4 font-mono text-xs select-none">
+
+                {/* Mock header row */}
+                <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                  <span className="text-slate-200 font-bold text-sm">ROUND 1 OF 6: CLASSIFY</span>
+                  <div className="flex items-center gap-3">
+                    {/* Hint icon with badge */}
+                    <div className="relative">
+                      <span className="text-lg opacity-50 cursor-default">💡</span>
+                      <span className="absolute -top-2 -right-3 w-5 h-5 rounded-full bg-amber-900/70 border border-amber-700/60 flex items-center justify-center text-[9px] font-bold text-amber-300 leading-none">3</span>
+                    </div>
+                    {/* Timer */}
+                    <span className="text-amber-500 font-bold text-lg px-3 py-0.5 rounded border border-amber-900/40 bg-amber-950/20">20:00</span>
+                  </div>
+                </div>
+
+                {/* Mock Mission Parameters — badge 1 */}
+                <div className="relative bg-slate-900/50 p-3 rounded border border-slate-700/50">
+                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-amber-900/70 border border-amber-700/60 flex items-center justify-center text-[9px] font-bold text-amber-300 z-10 leading-none">1</span>
+                  <p className="text-amber-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● Mission Parameters</p>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">A senior prompt engineer wrote the complex system prompt below. Identify the Prompt Engineering technique used in each block.</p>
+                </div>
+
+                {/* Mock System Constraints — badge 2 */}
+                <div className="relative bg-cyan-950/20 p-3 rounded border border-cyan-900/30">
+                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-cyan-900/70 border border-cyan-700/60 flex items-center justify-center text-[9px] font-bold text-cyan-300 z-10 leading-none">2</span>
+                  <p className="text-cyan-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● System Constraints</p>
+                  <ul className="space-y-0.5 text-cyan-100/70 text-[11px]">
+                    <li className="pl-2 border-l border-cyan-800/50">Required accuracy: 100%</li>
+                  </ul>
+                </div>
+
+                {/* Mock input area — badges 4 & 5 */}
+                <div className="space-y-1.5">
+                  <div className="relative flex justify-between text-[10px] text-slate-500 px-1 uppercase tracking-wider">
+                    <span>Pass threshold: 100%</span>
+                    <div className="relative flex items-center gap-1">
+                      <span className="absolute -top-3 -right-4 w-5 h-5 rounded-full bg-red-900/70 border border-red-700/60 flex items-center justify-center text-[9px] font-bold text-red-300 leading-none">4</span>
+                      <span className="text-red-400 font-bold">Attempts Left: 5</span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="w-full h-16 bg-black/60 rounded border border-slate-700/50 p-3 text-slate-600 italic text-[11px]">
+                      Type your engineered prompt here...
+                    </div>
+                    <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-300 z-10 leading-none">5</span>
+                    <div className="absolute bottom-2 right-2">
+                      <span className="bg-cyan-900/40 border border-cyan-800/50 text-cyan-400 text-[10px] font-bold px-3 py-1 rounded cursor-default">Submit →</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mock AI Response Modal — badge 6 */}
+                <div className="relative border border-slate-700 rounded bg-slate-950/80 overflow-hidden">
+                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-green-900/70 border border-green-700/60 flex items-center justify-center text-[9px] font-bold text-green-300 z-10 leading-none">6</span>
+
+                  {/* Fail state strip */}
+                  <div className="border-b border-slate-800 p-2.5 flex items-center justify-between bg-slate-900/60">
+                    <span className="text-red-400 text-[10px] font-bold uppercase tracking-wider">Previous Response — Round Failed</span>
+                    <span className="text-red-400 text-[10px] font-bold bg-red-950/50 border border-red-900/50 px-2 py-0.5 rounded">Score: 55%</span>
+                  </div>
+                  <div className="px-3 py-2 text-slate-500 text-[10px] italic border-b border-slate-800/60">AI response preview — review and refine your prompt...</div>
+                  <div className="flex justify-end px-3 py-1.5 bg-slate-900/40">
+                    <span className="text-slate-400 text-[10px] border border-slate-700 bg-slate-800 px-3 py-1 rounded cursor-default">Close</span>
+                  </div>
+
+                  {/* Pass state strip */}
+                  <div className="border-t border-slate-700 border-b border-green-900/40 p-2.5 flex items-center justify-between bg-green-950/10">
+                    <span className="text-green-400 text-[10px] font-bold uppercase tracking-wider">Round Passed — AI Response</span>
+                    <span className="text-green-400 text-[10px] font-bold bg-green-950/50 border border-green-900/50 px-2 py-0.5 rounded">Score: 85%</span>
+                  </div>
+                  <div className="px-3 py-2 text-slate-500 text-[10px] italic border-b border-green-900/20">AI response for your passing prompt will appear here...</div>
+                  <div className="flex justify-end px-3 py-1.5 bg-green-950/10">
+                    <span className="text-green-300 text-[10px] border border-green-800 bg-green-900/40 px-3 py-1 rounded cursor-default">Continue →</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Error from a failed startGame (e.g. already played) */}
+            {error && (
+              <p className="text-red-400 font-mono text-xs bg-red-950/30 border border-red-900/50 p-3 rounded text-center">
+                ERR: {error}
+              </p>
+            )}
+
+            {/* Ready button */}
+            <div className="flex justify-center pt-2 border-t border-slate-800">
+              <button
+                onClick={() => void startGame()}
+                disabled={busy}
+                className="bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed border border-green-400 text-green-50 px-14 py-4 rounded font-mono font-bold text-sm tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(34,197,94,0.25)]"
+              >
+                {busy ? "Starting..." : "I'm Ready — Start Timer →"}
+              </button>
+            </div>
+
           </div>
         </div>
       )}
