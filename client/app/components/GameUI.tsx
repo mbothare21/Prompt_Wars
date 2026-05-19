@@ -890,8 +890,15 @@ export default function GameUI() {
         return;
       }
       if (data.error === "Invalid session") {
-        setError("Session expired.");
-        finishGame();
+        // Treat as a transient store error — verify via refreshRound before terminating.
+        // Calling finishGame() here would kill valid sessions whenever Redis has a momentary
+        // hiccup or the dev server hot-reloads. Let refreshRound confirm the true state.
+        try {
+          await refreshRound(sid);
+        } catch {
+          setError("Session lost — please reload the page.");
+          finishGame();
+        }
         return;
       }
 
