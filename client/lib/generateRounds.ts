@@ -781,7 +781,7 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
                 instruction: "Write the SHORTEST prompt (≤15 words) that still makes the AI explain any concept clearly using an analogy.",
                 input: "Explain any concept in simple terms using an analogy.",
                 referenceExample: `Example only: if the concept were AI, you could say "AI is like a cricket batter who has faced thousands of balls, learned the patterns, and uses that experience to decide the next shot.`,
-                constraints: { maxWords: 15 },
+                constraints: { maxWords: 15, minWords: 50 },
             };
         case 5: {
             const s = ROUND_5_SETS[setIndex % ROUND_5_SETS.length];
@@ -844,7 +844,7 @@ export function generateRounds(sessionId: string): Round[] {
                 "Explain any concept in simple terms using an analogy.",
             referenceExample:
                 "Example only: if the concept were AI, you could say \"AI is like a cricket batter who has faced thousands of balls, learned the patterns, and uses that experience to decide the next shot.",
-            constraints: { maxWords: 15 },
+            constraints: { maxWords: 15, minWords: 50 },
         },
 
         // ── Round 5: STRUCTURED ────────────────────────────────────────

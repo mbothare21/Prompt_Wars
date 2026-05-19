@@ -221,13 +221,20 @@ export async function POST(req: Request) {
     progress = Math.round(finalScore * 100);
   }
 
+  // For Round 1 (CLASSIFY), apply a 5% penalty per failed attempt to the stored score.
+  // This affects reports and leaderboard averages only — the pass threshold still uses raw score.
+  const failedAttemptsBefore = (session.attemptsPerRound[roundNum] ?? 1) - 1;
+  const reportScore = roundNum === 1
+    ? Math.max(0, finalScore - failedAttemptsBefore * 0.05)
+    : finalScore;
+
   // Accumulate round data in session — flushed to DB at terminal states
   session.pendingRounds = [
     ...(session.pendingRounds ?? []),
     {
       round: roundNum,
       attempts: session.attemptsPerRound[roundNum],
-      score: finalScore,
+      score: reportScore,
       prompt: round.type === "CLASSIFY"
         ? answers
         : round.type === "BONUS"

@@ -111,15 +111,15 @@ async function refreshLeaderboard(now: number): Promise<Player[]> {
   return inflightLeaderboard;
 }
 
-export async function getLeaderboardResponse(): Promise<LeaderboardApiResponse> {
+export async function getLeaderboardResponse(force = false): Promise<LeaderboardApiResponse> {
   const now = Date.now();
   const cacheAge = now - lastFetchTime;
 
-  if (cachedLeaderboard && cacheAge < CACHE_TTL_MS) {
+  if (!force && cachedLeaderboard && cacheAge < CACHE_TTL_MS) {
     return { leaderboard: cachedLeaderboard };
   }
 
-  if (cachedLeaderboard && cacheAge < STALE_TTL_MS) {
+  if (!force && cachedLeaderboard && cacheAge < STALE_TTL_MS) {
     void refreshLeaderboard(now).catch(() => {
       /* keep serving stale cache */
     });

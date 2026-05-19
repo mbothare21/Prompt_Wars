@@ -112,6 +112,7 @@ const GAME_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 
 type ConstraintsObj = {
   maxWords?: number;
+  minWords?: number;
   requiredSections?: string[];
   requireSteps?: boolean;
   mustInclude?: string[];
@@ -125,7 +126,8 @@ function formatConstraints(constraints: unknown): string[] {
   const c = constraints as ConstraintsObj;
   const parts: string[] = [];
 
-  if (typeof c.maxWords === "number") parts.push(`Max Words: ${c.maxWords}`);
+  if (typeof c.maxWords === "number") parts.push(`Max Prompt Words: ${c.maxWords}`);
+  if (typeof c.minWords === "number") parts.push(`Min Response Words: ${c.minWords}`);
   if (Array.isArray(c.requiredSections)) {
     parts.push(`Required Sections: ${c.requiredSections.join(", ")}`);
   }
@@ -215,10 +217,22 @@ export default function GameUI() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  type ClassifyDetail = { id: string; text: string; chosen: string | null; correct: string; isCorrect: boolean };
+  type PreviousAttempt = {
+    prompt: string;
+    output: string;
+    score: number;
+    isPassed?: boolean;
+    classifyDetails?: ClassifyDetail[];
+    penaltyWarningPct?: number;
+  };
+
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
-  const [previousAttempt, setPreviousAttempt] = useState<{ prompt: string; output: string; score: number; isPassed?: boolean } | null>(null);
+  const [previousAttempt, setPreviousAttempt] = useState<PreviousAttempt | null>(null);
   const [showPreviousOutput, setShowPreviousOutput] = useState(false);
   const [pendingAdvance, setPendingAdvance] = useState(false);
+  const [pendingFinish, setPendingFinish] = useState(false);
+  const [r5HintUnlocked, setR5HintUnlocked] = useState(false);
   const [showPassAnimation, setShowPassAnimation] = useState(false);
   const [maxAttemptsThisRound, setMaxAttemptsThisRound] = useState(3);
   const [hintOpen, setHintOpen] = useState(false);
@@ -512,15 +526,28 @@ export default function GameUI() {
     [finishGame]
   );
 
-  // Close hint cloud when round changes
+  // Close hint cloud and reset per-round hint state when round changes
   useEffect(() => {
     setHintOpen(false);
+    setR5HintUnlocked(false);
   }, [roundNumber]);
+
+  // Auto-close BONUS round modal after 15 seconds, then go to finished screen
+  useEffect(() => {
+    if (!showPreviousOutput || !pendingFinish) return;
+    const timer = setTimeout(() => {
+      setShowPreviousOutput(false);
+      setPendingFinish(false);
+      setPhase("finished");
+      setMessage("All rounds complete!");
+    }, 15_000);
+    return () => clearTimeout(timer);
+  }, [showPreviousOutput, pendingFinish]);
 
   // Fetch leaderboard when game finishes
   useEffect(() => {
     if (phase !== "finished") return;
-    fetch("/api/leaderboard")
+    fetch(`/api/leaderboard?t=${Date.now()}`)
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data.leaderboard)) return;
@@ -967,21 +994,21 @@ export default function GameUI() {
         return;
       }
 
-      setStats((prev) => {
-        const nextAccuracies = [...prev.accuracies];
-        const currentBest = nextAccuracies[roundNumber - 1] ?? 0;
-        nextAccuracies[roundNumber - 1] = Math.max(currentBest, finalScore);
-        const attThisRound = (data.attemptsThisRound as number | undefined)
-          ?? ((prev.attemptsPerRound[roundNumber] ?? 0) + 1);
-        return {
-          ...prev,
-          accuracies: nextAccuracies,
-          attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
-          lastFinalScore: finalScore,
-        };
-      });
-
       if (status === "ROUND_FAILED") {
+        // Record the raw attempt score for ROUND_FAILED (best across attempts)
+        setStats((prev) => {
+          const nextAccuracies = [...prev.accuracies];
+          nextAccuracies[roundNumber - 1] = Math.max(nextAccuracies[roundNumber - 1] ?? 0, finalScore);
+          const attThisRound = (data.attemptsThisRound as number | undefined)
+            ?? ((prev.attemptsPerRound[roundNumber] ?? 0) + 1);
+          return {
+            ...prev,
+            accuracies: nextAccuracies,
+            attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
+            lastFinalScore: finalScore,
+          };
+        });
+
         const ar = data.attemptsRemaining as number | undefined;
         if (typeof ar === "number") setAttemptsRemaining(ar);
         if (typeof data.remainingTime === "number") {
@@ -989,13 +1016,27 @@ export default function GameUI() {
           setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
         }
         setLastResult(buildLastResult(finalScore, false));
-        // Only show output modal for rounds that have LLM output (not CLASSIFY)
-        if (!isClassify) {
-          const attemptOutput =
-            (data.output as string | undefined) ??
-            (data.finalOutput as string | undefined) ??
-            "";
-          setPreviousAttempt({ prompt: promptInput, output: attemptOutput, score: finalScore * 100 });
+
+        const rawOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
+
+        if (isClassify) {
+          // Parse classify output and show per-question results + penalty warning
+          try {
+            const parsed = JSON.parse(rawOutput) as { details?: ClassifyDetail[] };
+            const attemptsUsedSoFar = (data.attemptsThisRound as number | undefined) ?? 1;
+            const attemptsLeft = (ar ?? 0);
+            const nextPenalty = attemptsLeft > 0 ? attemptsUsedSoFar * 5 : 0;
+            setPreviousAttempt({
+              prompt: "",
+              output: rawOutput,
+              score: finalScore * 100,
+              classifyDetails: parsed.details,
+              penaltyWarningPct: nextPenalty,
+            });
+            setShowPreviousOutput(true);
+          } catch { /* no-op */ }
+        } else {
+          setPreviousAttempt({ prompt: promptInput, output: rawOutput, score: finalScore * 100 });
           setShowPreviousOutput(true);
         }
         // Keep promptInput so the user can edit their previous attempt
@@ -1008,11 +1049,26 @@ export default function GameUI() {
           deadlineRef.current = Date.now() + (data.remainingTime as number);
           setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
         }
-        setStats((prev) => ({
-          ...prev,
-          roundsCompleted: Math.max(prev.roundsCompleted, roundNumber),
-        }));
-        setLastResult(buildLastResult(finalScore, true));
+
+        // For Round 1, apply 5% penalty per failed attempt to the reported/leaderboard score
+        const attemptsUsedOnPass = (data.attemptsThisRound as number | undefined) ?? 1;
+        const adjustedScore = roundNumber === 1
+          ? Math.max(0, finalScore - (attemptsUsedOnPass - 1) * 0.05)
+          : finalScore;
+
+        setStats((prev) => {
+          const nextAccuracies = [...prev.accuracies];
+          nextAccuracies[roundNumber - 1] = Math.max(nextAccuracies[roundNumber - 1] ?? 0, adjustedScore);
+          const attThisRound = attemptsUsedOnPass ?? ((prev.attemptsPerRound[roundNumber] ?? 0) + 1);
+          return {
+            ...prev,
+            accuracies: nextAccuracies,
+            roundsCompleted: Math.max(prev.roundsCompleted, roundNumber),
+            attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
+            lastFinalScore: adjustedScore,
+          };
+        });
+        setLastResult(buildLastResult(adjustedScore, true));
         setShowPassAnimation(true);
         setTimeout(() => setShowPassAnimation(false), 1800);
         setPromptInput("");
@@ -1022,13 +1078,30 @@ export default function GameUI() {
           clearTimeout(passAdvanceTimeoutRef.current);
         }
 
-        // Show pass modal for rounds with LLM output; auto-advance for CLASSIFY
-        const passOutput =
-          (data.output as string | undefined) ??
-          (data.finalOutput as string | undefined) ??
-          "";
-        if (!isClassify && passOutput) {
-          setPreviousAttempt({ prompt: promptInput, output: passOutput, score: finalScore * 100, isPassed: true });
+        const passOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
+
+        if (isClassify) {
+          // Show classify pass modal with all-correct results
+          try {
+            const parsed = JSON.parse(passOutput) as { details?: ClassifyDetail[] };
+            setPreviousAttempt({
+              prompt: "",
+              output: passOutput,
+              score: adjustedScore * 100,
+              isPassed: true,
+              classifyDetails: parsed.details,
+            });
+            setShowPreviousOutput(true);
+            setPendingAdvance(true);
+          } catch {
+            passAdvanceTimeoutRef.current = setTimeout(() => {
+              passAdvanceTimeoutRef.current = null;
+              setLastResult(null);
+              void refreshRound(sid);
+            }, PASS_ADVANCE_MS);
+          }
+        } else if (passOutput) {
+          setPreviousAttempt({ prompt: promptInput, output: passOutput, score: adjustedScore * 100, isPassed: true });
           setShowPreviousOutput(true);
           setPendingAdvance(true);
         } else {
@@ -1044,16 +1117,31 @@ export default function GameUI() {
       }
 
       if (status === "GAME_COMPLETED") {
-        setLastResult(buildLastResult(finalScore, true));
         const gameStatus = data.gameStatus as string | undefined;
+        const adjustedFinalScore = roundNumber === 1
+          ? Math.max(0, finalScore - (((data.attemptsThisRound as number | undefined) ?? 1) - 1) * 0.05)
+          : finalScore;
+        setLastResult(buildLastResult(adjustedFinalScore, true));
         setStats((prev) => ({
           ...prev,
           roundsCompleted: Math.max(prev.roundsCompleted, TOTAL_ROUNDS),
           bonusCompleted: Boolean(data.bonusUnlocked),
           highScoreBonus: Boolean(data.highScoreBonus),
-          lastFinalScore: finalScore,
+          lastFinalScore: adjustedFinalScore,
           terminalStatus: gameStatus === "COMPLETED_WITH_BONUS" ? "COMPLETED_WITH_BONUS" : "COMPLETED",
         }));
+
+        // For BONUS round: show the generated output in a modal before finishing; auto-closes after 15s
+        if (isBonus) {
+          const bonusOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
+          if (bonusOutput) {
+            setPreviousAttempt({ prompt: metaPromptInput, output: bonusOutput, score: adjustedFinalScore * 100, isPassed: true });
+            setShowPreviousOutput(true);
+            setPendingFinish(true);
+            return;
+          }
+        }
+
         setPhase("finished");
         setMessage("All rounds complete!");
         return;
@@ -1219,14 +1307,53 @@ export default function GameUI() {
 
     for (const [roundNum, roundAttempts] of Array.from(otherRoundGroups.entries()).sort(([a], [b]) => a - b)) {
       const sortedAttempts = [...roundAttempts].sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0));
-      // The last attempt is the one that passed (or the final try if it failed the game)
       const passingAttempt = sortedAttempts[sortedAttempts.length - 1];
       const totalAttempts = sortedAttempts.length;
       const pct = Math.round(passingAttempt.score * 100);
       const label = ROUND_TYPE_LABELS[roundNum] ?? "Unknown";
-      // consolidated tip covers all attempts (generated by roundTips.ts)
       const tip = tips?.[roundNum] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
       const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+
+      // Round 6 (BONUS): special layout showing meta-prompt + generated prompt separately
+      if (roundNum === 6) {
+        const bonusPrompt = passingAttempt.prompt as { metaPrompt?: string; compiledPrompt?: string } | null;
+        const metaPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.metaPrompt) ? bonusPrompt.metaPrompt : formatPrompt(passingAttempt.prompt);
+        const compiledPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.compiledPrompt) ? bonusPrompt.compiledPrompt : null;
+        const bonusTip = tips?.[6] ?? IMPROVEMENT_TIPS_HTML[ROUND_TYPE_NAMES.BONUS] ?? "Combine specificity, strict format, and constraints into one tight prompt.";
+        roundsHtml += `
+          <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+              <h3 style="margin:0;color:#7c3aed;font-size:14px;">Round 6: ${label} (Bonus)</h3>
+              <div style="display:flex;gap:16px;font-size:12px;color:#64748b;align-items:center;">
+                <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
+                <span>Attempts: <strong>1</strong></span>
+              </div>
+            </div>
+            <div style="margin-bottom:8px;">
+              <div style="font-size:11px;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Meta-Prompt (written by player)</div>
+              <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:250px;overflow-y:auto;">${metaPromptText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            </div>
+            ${compiledPromptText ? `
+            <div style="margin-bottom:8px;">
+              <div style="font-size:11px;color:#0891b2;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Generated Prompt (compiled by AI from meta-prompt)</div>
+              <pre style="background:#0c1a2e;color:#93c5fd;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:250px;overflow-y:auto;border:1px solid #1e3a5f;">${compiledPromptText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            </div>` : ""}
+            ${passingAttempt.output ? `
+            <div style="margin-bottom:8px;">
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
+              <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${passingAttempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            </div>` : ""}
+            <div style="margin-top:8px;">
+              <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Meta-Prompt Improvement Tips</div>
+              <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${bonusTip}</div>
+              <div style="margin-top:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px;font-size:11px;color:#0c4a6e;line-height:1.6;">
+                <strong>How this helps:</strong> A stronger meta-prompt gives the AI clearer instructions about role, structure, and constraints — which results in a more precise generated prompt and ultimately a higher-quality final output.
+              </div>
+            </div>
+          </div>`;
+        continue;
+      }
+
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
@@ -1238,7 +1365,7 @@ export default function GameUI() {
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
-              ${totalAttempts > 1 ? `Passing Attempt (Attempt ${passingAttempt.attempts ?? totalAttempts})` : "Player Prompt / Response"}
+              ${totalAttempts > 1 ? `Passing Attempt (Attempt ${passingAttempt.attempts ?? totalAttempts})` : "Player Prompt"}
             </div>
             <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(passingAttempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
           </div>
@@ -1378,8 +1505,16 @@ export default function GameUI() {
   };
 
   const attemptsUsedThisRound = maxAttemptsThisRound > 0 ? maxAttemptsThisRound - attemptsRemaining : 0;
-  const hintTriggerCount = roundNumber === 1 ? 2 : roundNumber === 6 ? 0 : 1;
-  const hintAvailable = roundNumber >= 1 && roundNumber <= 6 && attemptsUsedThisRound >= hintTriggerCount;
+  // Round 6: hint always available; Round 5: unlocks when first-attempt modal is closed;
+  // Rounds 1–4: unlocks after 2 failed attempts
+  const hintAvailable = roundNumber === 6
+    ? true
+    : roundNumber === 5
+      ? r5HintUnlocked
+      : attemptsUsedThisRound >= 2;
+  const hintDisabledTooltip = roundNumber === 5
+    ? "Hint unlocks after your first attempt"
+    : "Hint available after 2 attempts";
   const showHintCloud = hintAvailable && hintOpen;
 
   return (
@@ -1487,7 +1622,7 @@ export default function GameUI() {
                             {previewRound.type !== "BONUS" && (
                               <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
                                 <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
+                                  <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> Output Constraints
                                 </h3>
                                 <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
                                   {formatConstraints(previewRound.constraints).map((c, i) => (
@@ -1974,21 +2109,21 @@ export default function GameUI() {
               {/* LEFT: Numbered callout cards */}
               <div className="lg:col-span-2 space-y-2.5 order-2 lg:order-1">
 
-                {/* ① Mission Parameters */}
+                {/* ① Task */}
                 <div className="flex gap-3 p-3 rounded border border-amber-900/40 bg-amber-950/10">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900/60 border border-amber-700/50 flex items-center justify-center text-[10px] font-bold text-amber-400 font-mono mt-0.5">1</span>
                   <div>
-                    <p className="text-xs font-bold text-amber-400 mb-0.5">📋 Mission Parameters</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">The challenge for each round. Read it carefully — your prompt must address exactly what is asked.</p>
+                    <p className="text-xs font-bold text-amber-400 mb-0.5">📋 Task / Challenge</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">What you need to do this round. Read it carefully — your prompt must address exactly what is asked.</p>
                   </div>
                 </div>
 
-                {/* ② System Constraints */}
+                {/* ② Rules */}
                 <div className="flex gap-3 p-3 rounded border border-cyan-900/40 bg-cyan-950/10">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-cyan-900/60 border border-cyan-700/50 flex items-center justify-center text-[10px] font-bold text-cyan-400 font-mono mt-0.5">2</span>
                   <div>
-                    <p className="text-xs font-bold text-cyan-400 mb-0.5">🔧 System Constraints</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">Rules your prompt must follow: word limits, required sections, output format. Breaking these lowers your score.</p>
+                    <p className="text-xs font-bold text-cyan-400 mb-0.5">🔧 Rules to Follow</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Requirements your answer must meet: word limits, required sections, output format. Not following these reduces your score.</p>
                   </div>
                 </div>
 
@@ -1997,16 +2132,16 @@ export default function GameUI() {
                   <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900/40 border border-amber-700/40 flex items-center justify-center text-[10px] font-bold text-amber-500 font-mono mt-0.5">3</span>
                   <div>
                     <p className="text-xs font-bold text-amber-500 mb-0.5">💡 Hint</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">Click the lightbulb icon in the header for round-specific tips. Each round has its own tailored guidance.</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Click the lightbulb in the header for round-specific tips. Use it when stuck — each round has its own guidance.</p>
                   </div>
                 </div>
 
-                {/* ④ Attempts & Threshold */}
+                {/* ④ Attempts & Score */}
                 <div className="flex gap-3 p-3 rounded border border-red-900/40 bg-red-950/10">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-red-900/60 border border-red-700/50 flex items-center justify-center text-[10px] font-bold text-red-400 font-mono mt-0.5">4</span>
                   <div>
-                    <p className="text-xs font-bold text-red-400 mb-0.5">📊 Attempts &amp; Pass Threshold</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">Shows how many tries you have left and the minimum score required to advance. Exhaust all attempts and the game ends.</p>
+                    <p className="text-xs font-bold text-red-400 mb-0.5">📊 Attempts Left &amp; Score Needed</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">How many tries you have remaining and the minimum score to move to the next round. Use up all attempts and the game ends.</p>
                   </div>
                 </div>
 
@@ -2014,17 +2149,17 @@ export default function GameUI() {
                 <div className="flex gap-3 p-3 rounded border border-slate-700/50 bg-slate-900/20">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-300 font-mono mt-0.5">5</span>
                   <div>
-                    <p className="text-xs font-bold text-slate-300 mb-0.5">✍️ Prompt Input</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">Type your engineered prompt here. Paste is disabled — write your prompt from scratch and hit Submit.</p>
+                    <p className="text-xs font-bold text-slate-300 mb-0.5">✍️ Your Answer / Prompt</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">Type your prompt here. Copy-paste is disabled — write it from scratch, then click Submit to see how the AI responds.</p>
                   </div>
                 </div>
 
-                {/* ⑥ AI Response Modal */}
+                {/* ⑥ AI Response */}
                 <div className="flex gap-3 p-3 rounded border border-green-900/40 bg-green-950/10">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-green-900/60 border border-green-700/50 flex items-center justify-center text-[10px] font-bold text-green-400 font-mono mt-0.5">6</span>
                   <div>
-                    <p className="text-xs font-bold text-green-400 mb-0.5">🤖 AI Response Modal</p>
-                    <p className="text-xs text-slate-400 leading-relaxed">After submitting, the AI&apos;s response and your score appear here. Green means you passed. Read it to refine your next attempt.</p>
+                    <p className="text-xs font-bold text-green-400 mb-0.5">🤖 AI Response (shown after submitting)</p>
+                    <p className="text-xs text-slate-400 leading-relaxed">A panel opens showing the AI&apos;s output and your score. If you passed it shows in green with a &quot;Continue&quot; button. If not, it shows in red — read the response and adjust your prompt.</p>
                   </div>
                 </div>
 
@@ -2047,34 +2182,34 @@ export default function GameUI() {
                   </div>
                 </div>
 
-                {/* Mock Mission Parameters — badge 1 */}
+                {/* Mock Task — badge 1 */}
                 <div className="relative bg-slate-900/50 p-3 rounded border border-slate-700/50">
                   <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-amber-900/70 border border-amber-700/60 flex items-center justify-center text-[9px] font-bold text-amber-300 z-10 leading-none">1</span>
-                  <p className="text-amber-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● Mission Parameters</p>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">A senior prompt engineer wrote the complex system prompt below. Identify the Prompt Engineering technique used in each block.</p>
+                  <p className="text-amber-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● Task</p>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">Identify the Prompt Engineering technique used in each block of the system prompt below.</p>
                 </div>
 
-                {/* Mock System Constraints — badge 2 */}
+                {/* Mock Rules — badge 2 */}
                 <div className="relative bg-cyan-950/20 p-3 rounded border border-cyan-900/30">
                   <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-cyan-900/70 border border-cyan-700/60 flex items-center justify-center text-[9px] font-bold text-cyan-300 z-10 leading-none">2</span>
-                  <p className="text-cyan-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● System Constraints</p>
+                  <p className="text-cyan-500/80 uppercase tracking-widest text-[9px] font-bold mb-1.5">● Rules</p>
                   <ul className="space-y-0.5 text-cyan-100/70 text-[11px]">
-                    <li className="pl-2 border-l border-cyan-800/50">Required accuracy: 100%</li>
+                    <li className="pl-2 border-l border-cyan-800/50">You must identify all 4 correctly to pass</li>
                   </ul>
                 </div>
 
                 {/* Mock input area — badges 4 & 5 */}
                 <div className="space-y-1.5">
                   <div className="relative flex justify-between text-[10px] text-slate-500 px-1 uppercase tracking-wider">
-                    <span>Pass threshold: 100%</span>
-                    <div className="relative flex items-center gap-1">
-                      <span className="absolute -top-3 -right-4 w-5 h-5 rounded-full bg-red-900/70 border border-red-700/60 flex items-center justify-center text-[9px] font-bold text-red-300 leading-none">4</span>
+                    <span>Score needed to pass: 100%</span>
+                    <div className="relative flex items-center gap-1 pr-1">
+                      <span className="absolute -top-3 -right-5 w-5 h-5 rounded-full bg-red-900/70 border border-red-700/60 flex items-center justify-center text-[9px] font-bold text-red-300 leading-none">4</span>
                       <span className="text-red-400 font-bold">Attempts Left: 5</span>
                     </div>
                   </div>
                   <div className="relative">
-                    <div className="w-full h-16 bg-black/60 rounded border border-slate-700/50 p-3 text-slate-600 italic text-[11px]">
-                      Type your engineered prompt here...
+                    <div className="w-full h-14 bg-black/60 rounded border border-slate-700/50 p-3 text-slate-600 italic text-[11px]">
+                      Type your prompt here...
                     </div>
                     <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-300 z-10 leading-none">5</span>
                     <div className="absolute bottom-2 right-2">
@@ -2083,27 +2218,43 @@ export default function GameUI() {
                   </div>
                 </div>
 
-                {/* Mock AI Response Modal — badge 6 */}
-                <div className="relative border border-slate-700 rounded bg-slate-950/80 overflow-hidden">
-                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-green-900/70 border border-green-700/60 flex items-center justify-center text-[9px] font-bold text-green-300 z-10 leading-none">6</span>
+              </div>
+            </div>
 
-                  {/* Fail state strip */}
-                  <div className="border-b border-slate-800 p-2.5 flex items-center justify-between bg-slate-900/60">
-                    <span className="text-red-400 text-[10px] font-bold uppercase tracking-wider">Previous Response — Round Failed</span>
+            {/* AI Response Modal preview — full width, shown as it appears in-game */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                <span className="w-5 h-5 rounded-full bg-green-900/60 border border-green-700/50 flex items-center justify-center text-[9px] font-bold text-green-400 leading-none shrink-0">6</span>
+                <span>What the AI response panel looks like after you submit</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs select-none">
+
+                {/* Failed state */}
+                <div className="rounded-xl border border-slate-800 bg-black/80 overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.6)]">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                    <h4 className="text-[11px] font-bold text-red-400 uppercase tracking-wider">Previous Response — Not Passed</h4>
                     <span className="text-red-400 text-[10px] font-bold bg-red-950/50 border border-red-900/50 px-2 py-0.5 rounded">Score: 55%</span>
                   </div>
-                  <div className="px-3 py-2 text-slate-500 text-[10px] italic border-b border-slate-800/60">AI response preview — review and refine your prompt...</div>
-                  <div className="flex justify-end px-3 py-1.5 bg-slate-900/40">
+                  <div className="px-4 py-3 text-slate-500 text-[11px] italic leading-relaxed border-b border-slate-800/60">
+                    The AI&apos;s response to your prompt appears here. Read it carefully — the output shows whether your prompt was clear enough to get the right result.
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/40">
+                    <span className="text-slate-600 text-[10px]">Read the output, adjust your prompt, and try again.</span>
                     <span className="text-slate-400 text-[10px] border border-slate-700 bg-slate-800 px-3 py-1 rounded cursor-default">Close</span>
                   </div>
+                </div>
 
-                  {/* Pass state strip */}
-                  <div className="border-t border-slate-700 border-b border-green-900/40 p-2.5 flex items-center justify-between bg-green-950/10">
-                    <span className="text-green-400 text-[10px] font-bold uppercase tracking-wider">Round Passed — AI Response</span>
+                {/* Passed state */}
+                <div className="rounded-xl border border-green-900/50 bg-black/80 overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.08)]">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-green-900/40">
+                    <h4 className="text-[11px] font-bold text-green-400 uppercase tracking-wider">Round Passed — AI Response</h4>
                     <span className="text-green-400 text-[10px] font-bold bg-green-950/50 border border-green-900/50 px-2 py-0.5 rounded">Score: 85%</span>
                   </div>
-                  <div className="px-3 py-2 text-slate-500 text-[10px] italic border-b border-green-900/20">AI response for your passing prompt will appear here...</div>
-                  <div className="flex justify-end px-3 py-1.5 bg-green-950/10">
+                  <div className="px-4 py-3 text-slate-400 text-[11px] italic leading-relaxed border-b border-green-900/20">
+                    Your prompt worked! The AI&apos;s response appears here. Review it before moving to the next round — it helps you understand what made your prompt effective.
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-green-950/10">
+                    <span className="text-green-600/70 text-[10px]">Click Continue to move to the next round.</span>
                     <span className="text-green-300 text-[10px] border border-green-800 bg-green-900/40 px-3 py-1 rounded cursor-default">Continue →</span>
                   </div>
                 </div>
@@ -2145,13 +2296,14 @@ export default function GameUI() {
               <h2 className="text-xl md:text-2xl font-bold text-slate-200 font-mono drop-shadow-md">{headerTitle}</h2>
               <div className="flex items-center gap-3 shrink-0">
                 {/* HINT CLOUD */}
-                {hintAvailable && (
+                {(roundNumber >= 1 && roundNumber <= 6) && (
                   <div className="relative">
                     <button
-                      onClick={() => setHintOpen((o) => !o)}
-                      className={`text-xl transition-transform hover:scale-110 ${showHintCloud ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
-                      aria-label="Toggle hint"
-                      title="Hint available — click to view"
+                      onClick={() => hintAvailable ? setHintOpen((o) => !o) : undefined}
+                      disabled={!hintAvailable}
+                      className={`text-xl transition-transform ${hintAvailable ? "hover:scale-110 opacity-70 hover:opacity-100 cursor-pointer" : "opacity-25 cursor-not-allowed"} ${showHintCloud ? "opacity-100" : ""}`}
+                      aria-label={hintAvailable ? "Toggle hint" : hintDisabledTooltip}
+                      title={hintAvailable ? "Need a hint? Click to view" : hintDisabledTooltip}
                     >
                       💡
                     </button>
@@ -2289,7 +2441,7 @@ export default function GameUI() {
                   {currentRoundData.type !== "BONUS" && (
                     <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
                       <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> System Constraints
+                        <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> Output Constraints
                       </h3>
                       <ul className="list-square list-inside font-mono text-sm text-cyan-100/70 space-y-2">
                         {formatConstraints(currentRoundData.constraints).map((c, i) => (
@@ -2334,7 +2486,7 @@ export default function GameUI() {
                     </div>
                   )}
 
-                  {currentRoundData.expectedOutput && roundNumber !== 1 && (
+                  {currentRoundData.expectedOutput && currentRoundData.type === "REVERSE" && (
                     <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                       <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
                         Target Output
@@ -2540,16 +2692,23 @@ export default function GameUI() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
           onClick={() => {
             setShowPreviousOutput(false);
-            if (pendingAdvance) {
+            if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
+            if (pendingFinish) {
+              setPendingFinish(false);
+              setPhase("finished");
+              setMessage("All rounds complete!");
+            } else if (pendingAdvance) {
               setPendingAdvance(false);
               setLastResult(null);
               const sid = sessionRef.current;
               if (sid) void refreshRound(sid);
+            } else {
+              setLastResult(null);
             }
           }}
         >
           <div
-            className="relative w-full max-w-2xl max-h-[80vh] bg-slate-950 border border-slate-700 rounded-xl shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden"
+            className="relative w-full max-w-2xl max-h-[85vh] bg-slate-950 border border-slate-700 rounded-xl shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: title + score + close */}
@@ -2558,12 +2717,12 @@ export default function GameUI() {
                 {previousAttempt.isPassed ? (
                   <h2 className="text-sm font-mono font-bold text-green-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                    Round Passed — AI Response
+                    {pendingFinish ? "Round Complete — AI Response" : "Round Passed — AI Response"}
                   </h2>
                 ) : (
-                  <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                    Previous Response
+                  <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    {previousAttempt.classifyDetails ? "Results" : "AI Response — Not Passed"}
                   </h2>
                 )}
                 <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${previousAttempt.isPassed ? "text-green-400 bg-green-950/40 border border-green-900/50" : "text-red-400 bg-red-950/40 border border-red-900/50"}`}>
@@ -2573,11 +2732,18 @@ export default function GameUI() {
               <button
                 onClick={() => {
                   setShowPreviousOutput(false);
-                  if (pendingAdvance) {
+                  if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
+                  if (pendingFinish) {
+                    setPendingFinish(false);
+                    setPhase("finished");
+                    setMessage("All rounds complete!");
+                  } else if (pendingAdvance) {
                     setPendingAdvance(false);
                     setLastResult(null);
                     const sid = sessionRef.current;
                     if (sid) void refreshRound(sid);
+                  } else {
+                    setLastResult(null);
                   }
                 }}
                 className="text-slate-500 hover:text-slate-200 text-xl leading-none transition-colors font-mono"
@@ -2587,26 +2753,59 @@ export default function GameUI() {
               </button>
             </div>
 
-            {/* AI output */}
-            <pre className="flex-1 overflow-y-auto px-6 py-5 text-sm font-mono text-green-300/80 whitespace-pre-wrap leading-relaxed">
-              {previousAttempt.output || "No output was captured for this attempt."}
-            </pre>
+            {/* Content: classify details or raw AI output */}
+            {previousAttempt.classifyDetails ? (
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
+                {previousAttempt.classifyDetails.map((d) => (
+                  <div key={d.id} className={`p-3 rounded border ${d.isCorrect ? "border-green-800/60 bg-green-950/30" : "border-red-800/60 bg-red-950/30"}`}>
+                    <p className="text-[11px] font-mono text-slate-400 mb-2 line-clamp-3 leading-relaxed">{d.text}</p>
+                    <div className="flex flex-wrap gap-3 items-center text-xs font-mono">
+                      <span className={`font-bold ${d.isCorrect ? "text-green-400" : "text-red-400"}`}>
+                        {d.isCorrect ? "✓" : "✗"} Your answer: {d.chosen ?? "No answer"}
+                      </span>
+                      {!d.isCorrect && (
+                        <span className="text-slate-500">→ Correct: <span className="text-green-400 font-bold">{d.correct}</span></span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {previousAttempt.penaltyWarningPct && previousAttempt.penaltyWarningPct > 0 ? (
+                  <div className="mt-2 p-3 bg-amber-950/40 border border-amber-700/50 rounded text-xs font-mono text-amber-300 flex items-start gap-2">
+                    <span>⚠️</span>
+                    <span>Score penalty: <strong>{previousAttempt.penaltyWarningPct}%</strong> will be deducted from your final score if you pass on the next attempt.</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <pre className="flex-1 overflow-y-auto px-6 py-5 text-sm font-mono text-green-300/80 whitespace-pre-wrap leading-relaxed">
+                {previousAttempt.output || "No output was captured for this attempt."}
+              </pre>
+            )}
 
             {/* Footer */}
             <div className="px-6 py-3 border-t border-slate-800 shrink-0 flex justify-between items-center bg-slate-950/60">
               {previousAttempt.isPassed ? (
-                <p className="text-[10px] text-green-700 font-mono">This response cleared the threshold — advancing to the next round</p>
+                <p className="text-[10px] text-green-700 font-mono">
+                  {pendingFinish ? "Auto-advancing in 15 seconds…" : "This response cleared the threshold — advancing to the next round"}
+                </p>
               ) : (
-                <p className="text-[10px] text-slate-600 font-mono">Revise your prompt in the editor to improve your score</p>
+                <p className="text-[10px] text-slate-600 font-mono">Review the results above, adjust your answer, and try again</p>
               )}
               <button
                 onClick={() => {
                   setShowPreviousOutput(false);
-                  if (pendingAdvance) {
+                  if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
+                  if (pendingFinish) {
+                    setPendingFinish(false);
+                    setPhase("finished");
+                    setMessage("All rounds complete!");
+                  } else if (pendingAdvance) {
                     setPendingAdvance(false);
                     setLastResult(null);
                     const sid = sessionRef.current;
                     if (sid) void refreshRound(sid);
+                  } else {
+                    setLastResult(null);
                   }
                 }}
                 className={`px-4 py-2 border rounded text-xs font-mono uppercase tracking-wider transition-all ${previousAttempt.isPassed ? "bg-green-900/40 hover:bg-green-900/60 border-green-800 text-green-300" : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"}`}
@@ -2622,7 +2821,7 @@ export default function GameUI() {
       {phase === "finished" && (
         <div className="text-center py-12 w-full max-w-2xl z-10">
           <h1 className="text-5xl font-black mb-8 font-mono text-transparent bg-clip-text bg-gradient-to-b from-slate-200 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter uppercase">
-            Simulation<br />Terminated
+            Game Over
           </h1>
           {message && (
             <p className="text-amber-500 font-mono tracking-widest uppercase text-sm mb-6 bg-amber-950/30 inline-block px-4 py-2 border border-amber-900/50 rounded">{message}</p>
