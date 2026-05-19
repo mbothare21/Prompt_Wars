@@ -7,7 +7,7 @@ export const SESSION_TIME_LIMIT_MS = 20 * 60 * 1000;
 export const PASS_THRESHOLDS: Record<number, number> = {
   1: 1.0,
   2: 0.7,
-  3: 0.65,
+  3: 0.75,
   4: 0.6,
   5: 0.6,
   6: 0.6,

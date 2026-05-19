@@ -216,11 +216,12 @@ export default function GameUI() {
   const [error, setError] = useState<string | null>(null);
 
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
-  const [previousAttempt, setPreviousAttempt] = useState<{ prompt: string; output: string; score: number } | null>(null);
+  const [previousAttempt, setPreviousAttempt] = useState<{ prompt: string; output: string; score: number; isPassed?: boolean } | null>(null);
   const [showPreviousOutput, setShowPreviousOutput] = useState(false);
+  const [pendingAdvance, setPendingAdvance] = useState(false);
   const [showPassAnimation, setShowPassAnimation] = useState(false);
   const [maxAttemptsThisRound, setMaxAttemptsThisRound] = useState(3);
-  const [hintDismissed, setHintDismissed] = useState(false);
+  const [hintOpen, setHintOpen] = useState(false);
 
   const [stats, setStats] = useState({
     roundsCompleted: 0,
@@ -511,9 +512,9 @@ export default function GameUI() {
     [finishGame]
   );
 
-  // Reset hint dismissal when round changes
+  // Close hint cloud when round changes
   useEffect(() => {
-    setHintDismissed(false);
+    setHintOpen(false);
   }, [roundNumber]);
 
   // Fetch leaderboard when game finishes
@@ -954,13 +955,16 @@ export default function GameUI() {
           deadlineRef.current = Date.now() + (data.remainingTime as number);
           setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
         }
-        const attemptOutput =
-          (data.output as string | undefined) ??
-          (data.finalOutput as string | undefined) ??
-          "";
-        setPreviousAttempt({ prompt: promptInput, output: attemptOutput, score: finalScore * 100 });
-        setShowPreviousOutput(true);
         setLastResult(buildLastResult(finalScore, false));
+        // Only show output modal for rounds that have LLM output (not CLASSIFY)
+        if (!isClassify) {
+          const attemptOutput =
+            (data.output as string | undefined) ??
+            (data.finalOutput as string | undefined) ??
+            "";
+          setPreviousAttempt({ prompt: promptInput, output: attemptOutput, score: finalScore * 100 });
+          setShowPreviousOutput(true);
+        }
         // Keep promptInput so the user can edit their previous attempt
         await refreshRound(sid);
         return;
@@ -980,17 +984,29 @@ export default function GameUI() {
         setTimeout(() => setShowPassAnimation(false), 1800);
         setPromptInput("");
         setDropdownSelections({});
-        setPreviousAttempt(null);
-        setShowPreviousOutput(false);
 
         if (passAdvanceTimeoutRef.current) {
           clearTimeout(passAdvanceTimeoutRef.current);
         }
-        passAdvanceTimeoutRef.current = setTimeout(() => {
-          passAdvanceTimeoutRef.current = null;
-          setLastResult(null);
-          void refreshRound(sid);
-        }, PASS_ADVANCE_MS);
+
+        // Show pass modal for rounds with LLM output; auto-advance for CLASSIFY
+        const passOutput =
+          (data.output as string | undefined) ??
+          (data.finalOutput as string | undefined) ??
+          "";
+        if (!isClassify && passOutput) {
+          setPreviousAttempt({ prompt: promptInput, output: passOutput, score: finalScore * 100, isPassed: true });
+          setShowPreviousOutput(true);
+          setPendingAdvance(true);
+        } else {
+          setPreviousAttempt(null);
+          setShowPreviousOutput(false);
+          passAdvanceTimeoutRef.current = setTimeout(() => {
+            passAdvanceTimeoutRef.current = null;
+            setLastResult(null);
+            void refreshRound(sid);
+          }, PASS_ADVANCE_MS);
+        }
         return;
       }
 
@@ -1331,7 +1347,7 @@ export default function GameUI() {
   const attemptsUsedThisRound = maxAttemptsThisRound > 0 ? maxAttemptsThisRound - attemptsRemaining : 0;
   const hintTriggerCount = roundNumber === 1 ? 2 : roundNumber === 6 ? 0 : 1;
   const hintAvailable = roundNumber >= 1 && roundNumber <= 6 && attemptsUsedThisRound >= hintTriggerCount;
-  const showHintCloud = hintAvailable && !hintDismissed;
+  const showHintCloud = hintAvailable && hintOpen;
 
   return (
     <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
@@ -1910,10 +1926,10 @@ export default function GameUI() {
                 {hintAvailable && (
                   <div className="relative">
                     <button
-                      onClick={() => setHintDismissed((d) => !d)}
-                      className={`text-xl transition-transform hover:scale-110 ${showHintCloud ? "animate-pulse" : "opacity-60 hover:opacity-100"}`}
+                      onClick={() => setHintOpen((o) => !o)}
+                      className={`text-xl transition-transform hover:scale-110 ${showHintCloud ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
                       aria-label="Toggle hint"
-                      title="Hint available"
+                      title="Hint available — click to view"
                     >
                       💡
                     </button>
@@ -1926,9 +1942,9 @@ export default function GameUI() {
                             <h4 className="text-xs font-bold text-amber-400 uppercase tracking-widest">Hint</h4>
                           </div>
                           <button
-                            onClick={() => setHintDismissed(true)}
+                            onClick={() => setHintOpen(false)}
                             className="text-slate-500 hover:text-white text-sm leading-none transition-colors"
-                            aria-label="Dismiss hint"
+                            aria-label="Close hint"
                           >
                             ✕
                           </button>
@@ -2300,25 +2316,48 @@ export default function GameUI() {
       {showPreviousOutput && previousAttempt && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-          onClick={() => setShowPreviousOutput(false)}
+          onClick={() => {
+            setShowPreviousOutput(false);
+            if (pendingAdvance) {
+              setPendingAdvance(false);
+              setLastResult(null);
+              const sid = sessionRef.current;
+              if (sid) void refreshRound(sid);
+            }
+          }}
         >
           <div
             className="relative w-full max-w-2xl max-h-[80vh] bg-slate-950 border border-slate-700 rounded-xl shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: title + score + close */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
+            <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${previousAttempt.isPassed ? "border-green-900/50" : "border-slate-800"}`}>
               <div className="flex items-center gap-4">
-                <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
-                  Previous Response
-                </h2>
-                <span className="text-xs font-mono font-bold text-red-400 bg-red-950/40 border border-red-900/50 px-2 py-0.5 rounded">
+                {previousAttempt.isPassed ? (
+                  <h2 className="text-sm font-mono font-bold text-green-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    Round Passed — AI Response
+                  </h2>
+                ) : (
+                  <h2 className="text-sm font-mono font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                    Previous Response
+                  </h2>
+                )}
+                <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${previousAttempt.isPassed ? "text-green-400 bg-green-950/40 border border-green-900/50" : "text-red-400 bg-red-950/40 border border-red-900/50"}`}>
                   Score: {previousAttempt.score.toFixed(1)}%
                 </span>
               </div>
               <button
-                onClick={() => setShowPreviousOutput(false)}
+                onClick={() => {
+                  setShowPreviousOutput(false);
+                  if (pendingAdvance) {
+                    setPendingAdvance(false);
+                    setLastResult(null);
+                    const sid = sessionRef.current;
+                    if (sid) void refreshRound(sid);
+                  }
+                }}
                 className="text-slate-500 hover:text-slate-200 text-xl leading-none transition-colors font-mono"
                 aria-label="Close"
               >
@@ -2333,12 +2372,24 @@ export default function GameUI() {
 
             {/* Footer */}
             <div className="px-6 py-3 border-t border-slate-800 shrink-0 flex justify-between items-center bg-slate-950/60">
-              <p className="text-[10px] text-slate-600 font-mono">Revise your prompt in the editor to improve your score</p>
+              {previousAttempt.isPassed ? (
+                <p className="text-[10px] text-green-700 font-mono">This response cleared the threshold — advancing to the next round</p>
+              ) : (
+                <p className="text-[10px] text-slate-600 font-mono">Revise your prompt in the editor to improve your score</p>
+              )}
               <button
-                onClick={() => setShowPreviousOutput(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs font-mono uppercase tracking-wider transition-all"
+                onClick={() => {
+                  setShowPreviousOutput(false);
+                  if (pendingAdvance) {
+                    setPendingAdvance(false);
+                    setLastResult(null);
+                    const sid = sessionRef.current;
+                    if (sid) void refreshRound(sid);
+                  }
+                }}
+                className={`px-4 py-2 border rounded text-xs font-mono uppercase tracking-wider transition-all ${previousAttempt.isPassed ? "bg-green-900/40 hover:bg-green-900/60 border-green-800 text-green-300" : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"}`}
               >
-                Close
+                {previousAttempt.isPassed ? "Continue →" : "Close"}
               </button>
             </div>
           </div>

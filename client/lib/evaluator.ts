@@ -174,23 +174,134 @@ function scoreReasoning(output: string): number {
 
 // ── Combined LLM scorer (1 call instead of 3) ─────────────────────────────────
 
+function buildImproveRubric(constraints: unknown): string {
+  const c = isPlainObject(constraints) ? (constraints as Record<string, unknown>) : {};
+  const sections: string[] = Array.isArray(c.requiredSections) ? (c.requiredSections as string[]) : [];
+  const maxWords: number | null = typeof c.maxWords === "number" ? c.maxWords : null;
+
+  const sectionList = sections.length ? sections.join(", ") : "key structured sections";
+  const wordLimit = maxWords ? `≤${maxWords} words` : "a specified word limit";
+
+  return `You are a scoring engine for a prompt-engineering game.
+
+The player was given a weak prompt and a meeting/business transcript. Their task: write an improved prompt that makes an AI extract a structured summary with these required sections: ${sectionList}, in ${wordLimit}.
+
+Score the player's PROMPT and OUTPUT using these explicit criteria.
+
+PROMPT score (0–1):
+• +0.25 if the prompt assigns a clear role or persona (e.g. "You are a business analyst...")
+• +0.40 based on how many required sections are explicitly named in the prompt (named/total × 0.40)
+• +0.20 if the prompt specifies the word or length constraint
+• +0.15 if the prompt uses clear action language (summarize, extract, identify, list...)
+
+OUTPUT score (0–1):
+• +0.40 if all required sections appear in the output, clearly labeled
+• +0.20 if the output word count is within the limit
+• +0.25 based on relevance and accuracy of extracted content
+• +0.15 based on conciseness and structure
+
+Return JSON only — no markdown, no explanation:
+{"quality": <output_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
+}
+
+function buildOptimizeRubric(): string {
+  return `You are a scoring engine for a prompt-engineering game.
+
+The player's task: write a concise prompt (ideally ≤15 words) that makes an AI explain a technical concept using a clear analogy or comparison.
+
+Score using these explicit criteria.
+
+PROMPT score (0–1):
+• +0.35 if the prompt is ≤15 words
+• +0.30 if the prompt explicitly requests or implies an analogy, comparison, or metaphor
+• +0.20 if the prompt is clear and action-oriented
+• +0.15 if the prompt gives useful scope (audience, format, or style)
+
+OUTPUT quality score (0–1):
+• +0.35 if the output uses a concrete analogy or comparison
+• +0.30 based on how easy the explanation is to understand for a non-expert
+• +0.20 if the analogy is accurate and relevant to the concept
+• +0.15 based on overall explanation quality
+
+ANALOGY score (0–1):
+• How effective, clear, and creative is the analogy? Score independently from 0 to 1.
+
+Return JSON only — no markdown, no explanation:
+{"quality": <output_quality_0_to_1>, "analogy": <analogy_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
+}
+
+function buildReverseRubric(expectedOutput: string): string {
+  return `You are a scoring engine for a prompt-engineering game.
+
+The player was shown a target output and must reconstruct the prompt that would produce it.
+
+Target output:
+${expectedOutput}
+
+Score using these explicit criteria.
+
+PROMPT score (0–1):
+• +0.30 if the prompt assigns a role or persona matching the domain of the target output
+• +0.30 if the prompt explicitly names or references the structural sections/elements visible in the target output
+• +0.20 if the prompt specifies the output format (bullet points, numbered list, labeled sections, etc.)
+• +0.20 if the prompt uses precise language that mirrors the target output's style and tone
+
+OUTPUT score (0–1) — how closely the generated output resembles the target:
+• +0.40 based on structural match (sections, format, order)
+• +0.35 based on content coverage (key concepts, entities, facts from the target)
+• +0.15 based on stylistic match (tone, voice, level of detail)
+• +0.10 based on overall coherence and quality
+
+Return JSON only — no markdown, no explanation:
+{"quality": <output_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
+}
+
+function buildStructuredRubric(): string {
+  return `You are a scoring engine for a prompt-engineering game.
+
+The player's task: write a prompt that makes an AI solve a logic or constraint-based problem step-by-step, showing its reasoning explicitly.
+
+Score using these explicit criteria.
+
+PROMPT score (0–1):
+• +0.30 if the prompt explicitly requests step-by-step or systematic reasoning
+• +0.25 if the prompt instructs the AI to identify constraints or rules before solving
+• +0.25 if the prompt requires a clearly labeled or structured final answer
+• +0.20 if the prompt assigns a relevant role or analytical persona
+
+OUTPUT score (0–1):
+• +0.40 if the output shows clear, explicit step-by-step reasoning
+• +0.30 if the output correctly identifies and applies the problem's constraints
+• +0.20 if the output has a clearly labeled final answer
+• +0.10 based on overall accuracy, clarity, and coherence
+
+Return JSON only — no markdown, no explanation:
+{"quality": <output_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
+}
+
 async function scoreCombined(
   userPrompt: string,
-  output: string
+  output: string,
+  context?: {
+    roundType: "IMPROVE" | "OPTIMIZE" | "REVERSE" | "STRUCTURED";
+    constraints?: unknown;
+    expectedOutput?: string;
+  }
 ): Promise<CombinedScores> {
-  const key = cacheKey("combined", userPrompt, output);
+  const key = cacheKey("combined", userPrompt, output, context?.roundType ?? "");
   const cached = cacheGet<CombinedScores>(key);
   if (cached) return cached;
 
-  try {
-    const res = await callLLM(
-      getOpenAI().chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0,
-        messages: [
-          {
-            role: "system",
-            content: `You are a scoring engine.
+  const systemPrompt =
+    context?.roundType === "IMPROVE"
+      ? buildImproveRubric(context.constraints)
+      : context?.roundType === "OPTIMIZE"
+        ? buildOptimizeRubric()
+        : context?.roundType === "REVERSE"
+          ? buildReverseRubric(context.expectedOutput ?? "")
+          : context?.roundType === "STRUCTURED"
+            ? buildStructuredRubric()
+            : `You are a scoring engine.
 
 Return JSON only — no markdown, no explanation:
 {
@@ -198,12 +309,16 @@ Return JSON only — no markdown, no explanation:
   "analogy": number,
   "prompt": number
 }
-Score each from 0 to 1.`,
-          },
-          {
-            role: "user",
-            content: `Prompt:\n${userPrompt}\n\nOutput:\n${output}`,
-          },
+Score each from 0 to 1.`;
+
+  try {
+    const res = await callLLM(
+      getOpenAI().chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Prompt:\n${userPrompt}\n\nOutput:\n${output}` },
         ],
         response_format: { type: "json_object" },
       })
@@ -213,7 +328,7 @@ Score each from 0 to 1.`,
     const parsed = JSON.parse(text) as Partial<CombinedScores>;
     const scores: CombinedScores = {
       quality: clamp(Number(parsed.quality)),
-      analogy: clamp(Number(parsed.analogy)),
+      analogy: clamp(Number(parsed.analogy ?? 0)),
       prompt: clamp(Number(parsed.prompt)),
     };
     cacheSet(key, scores);
@@ -488,7 +603,8 @@ async function scoreImproveOutcome(
 ) {
   const { quality: qualityScore, prompt: rawPromptScore } = await scoreCombined(
     prompt,
-    output
+    output,
+    { roundType: "IMPROVE", constraints: round.constraints }
   );
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
@@ -516,14 +632,14 @@ async function scoreReverseOutcome(
   output: string
 ) {
   const target = round.expectedOutput || "";
-  const [similarity, rawPromptScore] = await Promise.all([
+  const [similarity, rubric] = await Promise.all([
     getSimilarity(output, target),
-    Promise.resolve(scorePrompt(prompt)),
+    scoreCombined(prompt, output, { roundType: "REVERSE", expectedOutput: target }),
   ]);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
-  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
-  const taskOutputScore = 0.8 * similarity + 0.2 * constraintScore;
+  const promptScore = clamp(0.6 * rubric.prompt + 0.4 * constraintCoverage);
+  const taskOutputScore = clamp(0.6 * similarity + 0.25 * rubric.quality + 0.15 * constraintScore);
 
   return {
     similarity,
@@ -544,7 +660,7 @@ async function scoreOptimizeOutcome(
     analogy: analogyQualityScore,
     prompt: promptScore,
   } =
-    await scoreCombined(prompt, output);
+    await scoreCombined(prompt, output, { roundType: "OPTIMIZE" });
   const taskOutputScore =
     0.55 * qualityScore +
     0.45 * analogyQualityScore;
@@ -567,14 +683,16 @@ async function scoreStructuredOutcome(
 ) {
   const reasoningScore = scoreReasoning(output);
   const structureScore = evaluateStructure(output);
-  const rawPromptScore = scorePrompt(prompt);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
-  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
-  const taskOutputScore =
-    0.45 * reasoningScore +
-    0.35 * structureScore +
-    0.2 * constraintScore;
+  const rubric = await scoreCombined(prompt, output, { roundType: "STRUCTURED", constraints: round.constraints });
+  const promptScore = clamp(0.6 * rubric.prompt + 0.4 * constraintCoverage);
+  const taskOutputScore = clamp(
+    0.30 * reasoningScore +
+    0.25 * structureScore +
+    0.30 * rubric.quality +
+    0.15 * constraintScore
+  );
 
   return {
     reasoningScore,

@@ -1,5 +1,5 @@
 import { getSession, updateSession } from "@/lib/gameStore";
-import { ATTEMPT_LIMITS, PASS_THRESHOLDS } from "@/lib/gameConstants";
+import { ATTEMPT_LIMITS, MAIN_ROUNDS, PASS_THRESHOLDS } from "@/lib/gameConstants";
 import { isTimeUp } from "@/lib/time";
 import { evaluateRound, evaluateMetaBonusRound } from "@/lib/evaluator";
 import { savePlayer } from "@/lib/playerStore";
@@ -143,24 +143,27 @@ export async function POST(req: Request) {
   const maxAttempts = ATTEMPT_LIMITS[roundNum] ?? Infinity;
 
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {
+    const isBonusRound = roundNum > MAIN_ROUNDS;
+    const terminalStatus = isBonusRound ? "COMPLETED" : "FAILED";
     console.log("[evaluate] NO_ATTEMPTS_LEFT:pre-eval", {
       sessionId,
       player: session.player.email ?? session.player.name,
       round: roundNum,
       attemptsUsed: session.attemptsPerRound[roundNum],
       maxAttempts,
+      terminalStatus,
     });
-    session.status = "FAILED";
+    session.status = isBonusRound ? "COMPLETED" : "FAILED";
     session.completed = true;
     session.player.completed = true;
     session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
-    session.player.gameStatus = "FAILED";
+    session.player.gameStatus = isBonusRound ? "COMPLETED" : "FAILED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    await persistTerminalSession(session, "FAILED").catch((e) =>
+    await persistTerminalSession(session, terminalStatus).catch((e) =>
       console.error("[evaluate] MongoDB attempts-exhausted error:", e)
     );
 
@@ -321,6 +324,8 @@ export async function POST(req: Request) {
     Number.isFinite(maxAttempts) &&
     (session.attemptsPerRound[roundNum] ?? 0) >= maxAttempts
   ) {
+    const isBonusRound = roundNum > MAIN_ROUNDS;
+    const terminalStatus = isBonusRound ? "COMPLETED" : "FAILED";
     console.log("[evaluate] NO_ATTEMPTS_LEFT:post-eval", {
       sessionId,
       player: session.player.email ?? session.player.name,
@@ -328,18 +333,19 @@ export async function POST(req: Request) {
       attemptsUsed: session.attemptsPerRound[roundNum],
       maxAttempts,
       finalScore,
+      terminalStatus,
     });
-    session.status = "FAILED";
+    session.status = isBonusRound ? "COMPLETED" : "FAILED";
     session.completed = true;
     session.player.completed = true;
     session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
-    session.player.gameStatus = "FAILED";
+    session.player.gameStatus = isBonusRound ? "COMPLETED" : "FAILED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
 
-    await persistTerminalSession(session, "FAILED").catch((e) =>
+    await persistTerminalSession(session, terminalStatus).catch((e) =>
       console.error("[evaluate] MongoDB final-attempt failure error:", e)
     );
 
