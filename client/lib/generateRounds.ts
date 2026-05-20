@@ -104,7 +104,7 @@ const ROUND_2_SETS = [
     // ── Set 1 (Original — Product Launch Strategy) ────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to produce the desired structured output. Improve the given prompt to extract structured highlights (Conflicts, Decisions, Dependencies, Next Steps) in ≤90 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to produce the desired structured output. Improve the given prompt to extract structured highlights (Conflicts, Decisions, Dependencies, Next Steps). The output summary must be ≤200 words.",
         originalPrompt: "Summarize this",
         input: `The quarterly strategy meeting for the upcoming product launch was held on Monday and brought together stakeholders from product management, marketing, operations, customer success, and regional sales teams. While the meeting was initially intended to finalize the launch timeline and align on execution priorities, it quickly became evident that there were several unresolved dependencies and differing viewpoints that prevented clear decision-making.
 
@@ -146,7 +146,7 @@ Define agenda, priorities, and decision criteria
 Assign ownership for risks, QA, and supply chain mitigation
       `,
         constraints: {
-            maxWords: 90,
+            maxWords: 200,
             requiredSections: [
                 "Conflicts",
                 "Decisions",
@@ -159,7 +159,7 @@ Assign ownership for risks, QA, and supply chain mitigation
     // ── Set 2 (Customer Retention Review) ─────────────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights (Conflicts, Decisions made, Dependencies, Risks, Next steps) in ≤90 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights (Conflicts, Decisions made, Dependencies, Risks, Next steps). The output summary must be ≤200 words.",
         originalPrompt: "Give me the key points",
         input: `The quarterly strategy review meeting focused heavily on the growing concerns around customer retention and declining renewal rates in the company's subscription business. Marketing leadership argued that customers were abandoning the platform because the onboarding experience was confusing and lacked clear activation milestones. They pointed to survey feedback indicating that many users did not fully understand the platform's value during their first two weeks.
 
@@ -185,7 +185,7 @@ Higher churn, reduced renewals, customer dissatisfaction.
 Next steps:
 Conduct churn analysis, redesign onboarding, review feature adoption metrics.`,
         constraints: {
-            maxWords: 90,
+            maxWords: 200,
             requiredSections: [
                 "Conflicts",
                 "Decisions made",
@@ -199,7 +199,7 @@ Conduct churn analysis, redesign onboarding, review feature adoption metrics.`,
     // ── Set 3 (Operational Review — Support Delays) ───────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary (Conflicts, Decisions made, Dependencies, Risks, Next steps) in ≤90 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary (Conflicts, Decisions made, Dependencies, Risks, Next steps). The output summary must be ≤200 words.",
         originalPrompt: "Tell me the important parts",
         input: `During the monthly operational review meeting, leadership teams discussed recurring delays in customer issue resolution and growing dissatisfaction among enterprise accounts. Support leadership argued that engineering response times had slowed considerably, resulting in unresolved customer escalations and longer turnaround times. They presented examples where urgent customer incidents remained open for several days because technical investigations were delayed.
 
@@ -225,7 +225,7 @@ Customer dissatisfaction, SLA breaches, staff burnout.
 Next steps:
 Standardize documentation, improve escalation workflows, revisit automation later.`,
         constraints: {
-            maxWords: 90,
+            maxWords: 200,
             requiredSections: [
                 "Conflicts",
                 "Decisions made",

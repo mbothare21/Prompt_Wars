@@ -126,7 +126,7 @@ function formatConstraints(constraints: unknown): string[] {
   const c = constraints as ConstraintsObj;
   const parts: string[] = [];
 
-  if (typeof c.maxWords === "number") parts.push(`Max Prompt Words: ${c.maxWords}`);
+  if (typeof c.maxWords === "number") parts.push(`Max Output Words: ${c.maxWords}`);
   if (typeof c.minWords === "number") parts.push(`Min Response Words: ${c.minWords}`);
   if (Array.isArray(c.requiredSections)) {
     parts.push(`Required Sections: ${c.requiredSections.join(", ")}`);
@@ -530,6 +530,8 @@ export default function GameUI() {
   useEffect(() => {
     setHintOpen(false);
     setR5HintUnlocked(false);
+    setPreviousAttempt(null);
+    setShowPreviousOutput(false);
   }, [roundNumber]);
 
   // Auto-close BONUS round modal after 15 seconds, then go to finished screen
@@ -1081,25 +1083,26 @@ export default function GameUI() {
         const passOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
 
         if (isClassify) {
-          // Show classify pass modal with all-correct results
-          try {
-            const parsed = JSON.parse(passOutput) as { details?: ClassifyDetail[] };
-            setPreviousAttempt({
-              prompt: "",
-              output: passOutput,
-              score: adjustedScore * 100,
-              isPassed: true,
-              classifyDetails: parsed.details,
-            });
-            setShowPreviousOutput(true);
-            setPendingAdvance(true);
-          } catch {
-            passAdvanceTimeoutRef.current = setTimeout(() => {
-              passAdvanceTimeoutRef.current = null;
-              setLastResult(null);
-              void refreshRound(sid);
-            }, PASS_ADVANCE_MS);
-          }
+          // Build classify pass details directly from the submitted answers (passOutput
+          // is empty for CLASSIFY — the API result has no output field for this type)
+          const parts = currentRoundData.promptParts ?? [];
+          const submittedAnswers = answers ?? {};
+          const classifyPassDetails: ClassifyDetail[] = parts.map((p) => ({
+            id: p.id,
+            text: p.text,
+            chosen: submittedAnswers[p.id] ?? null,
+            correct: p.answer,
+            isCorrect: true,
+          }));
+          setPreviousAttempt({
+            prompt: "",
+            output: "",
+            score: adjustedScore * 100,
+            isPassed: true,
+            classifyDetails: classifyPassDetails,
+          });
+          setShowPreviousOutput(true);
+          setPendingAdvance(true);
         } else if (passOutput) {
           setPreviousAttempt({ prompt: promptInput, output: passOutput, score: adjustedScore * 100, isPassed: true });
           setShowPreviousOutput(true);
@@ -2342,7 +2345,7 @@ export default function GameUI() {
                             <p className="text-amber-400/90 font-bold mb-2">Check your prompt:</p>
                             <p>✦ Did you add <span className="text-cyan-400">role prompting</span>? (e.g. &ldquo;You are a business analyst...&rdquo;)</p>
                             <p>✦ Are all <span className="text-cyan-400">required sections</span> explicitly named? (Conflicts, Decisions, Dependencies, Next Steps)</p>
-                            <p>✦ Did you include a <span className="text-cyan-400">word limit</span> constraint? (e.g. &ldquo;in ≤90 words&rdquo;)</p>
+                            <p>✦ Did you include an <span className="text-cyan-400">output word limit</span>? (e.g. &ldquo;summary must be ≤200 words&rdquo;)</p>
                             <p>✦ Are you asking for <span className="text-cyan-400">specific extraction</span>, not just &ldquo;summarize&rdquo;?</p>
                           </div>
                         )}
@@ -2699,6 +2702,7 @@ export default function GameUI() {
               setMessage("All rounds complete!");
             } else if (pendingAdvance) {
               setPendingAdvance(false);
+              setPreviousAttempt(null);
               setLastResult(null);
               const sid = sessionRef.current;
               if (sid) void refreshRound(sid);
@@ -2739,6 +2743,7 @@ export default function GameUI() {
                     setMessage("All rounds complete!");
                   } else if (pendingAdvance) {
                     setPendingAdvance(false);
+                    setPreviousAttempt(null);
                     setLastResult(null);
                     const sid = sessionRef.current;
                     if (sid) void refreshRound(sid);
@@ -2801,6 +2806,7 @@ export default function GameUI() {
                     setMessage("All rounds complete!");
                   } else if (pendingAdvance) {
                     setPendingAdvance(false);
+                    setPreviousAttempt(null);
                     setLastResult(null);
                     const sid = sessionRef.current;
                     if (sid) void refreshRound(sid);
