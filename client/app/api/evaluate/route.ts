@@ -271,8 +271,11 @@ export async function POST(req: Request) {
   session.player.averageScore = metrics.averageScore;
 
   const passThreshold = PASS_THRESHOLDS[roundNum] ?? 0.60;
+  // Compare rounded scores (same value the player sees) to avoid floating-point
+  // edge cases where 0.5989 rounds to 60% on screen but fails a 0.60 threshold.
+  const roundedScore = Math.round(finalScore * 100) / 100;
 
-  if (finalScore >= passThreshold) {
+  if (roundedScore >= passThreshold) {
     session.currentRound++;
     if (session.currentRound > 5) {
       session.bonusUnlocked = true;

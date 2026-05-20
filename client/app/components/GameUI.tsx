@@ -269,6 +269,7 @@ export default function GameUI() {
   const allowTimeUpRef = useRef(false);
   const roundWallStartedAtRef = useRef<number>(0);
   const initialSessionSecondsRef = useRef<number>(0);
+  const gameEndedSecondsUsedRef = useRef<number | null>(null);
   const passAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadlineRef = useRef<number>(0);
   const gameStartedAtRef = useRef<number>(0);
@@ -397,6 +398,7 @@ export default function GameUI() {
           stats?: typeof stats;
           violations?: number;
           initialSessionSeconds?: number;
+          gameEndedSecondsUsed?: number | null;
           promptInput?: string;
           metaPromptInput?: string;
           generatedPrompt?: string | null;
@@ -409,6 +411,9 @@ export default function GameUI() {
         if (typeof s.violations === "number") setViolations(s.violations);
         if (typeof s.initialSessionSeconds === "number") {
           initialSessionSecondsRef.current = s.initialSessionSeconds;
+        }
+        if (typeof s.gameEndedSecondsUsed === "number") {
+          gameEndedSecondsUsedRef.current = s.gameEndedSecondsUsed;
         }
         if (typeof s.promptInput === "string") setPromptInput(s.promptInput);
         if (typeof s.metaPromptInput === "string") {
@@ -462,6 +467,7 @@ export default function GameUI() {
         stats,
         violations,
         initialSessionSeconds: initialSessionSecondsRef.current,
+        gameEndedSecondsUsed: gameEndedSecondsUsedRef.current,
         promptInput,
         metaPromptInput,
         generatedPrompt,
@@ -488,6 +494,11 @@ export default function GameUI() {
       passAdvanceTimeoutRef.current = null;
     }
     if (note) setMessage(note);
+    // Snapshot elapsed seconds before phase change stops the timer
+    if (gameEndedSecondsUsedRef.current === null && initialSessionSecondsRef.current > 0) {
+      const remaining = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
+      gameEndedSecondsUsedRef.current = Math.max(0, initialSessionSecondsRef.current - remaining);
+    }
     setPhase("finished");
   }, []);
 
@@ -1164,7 +1175,9 @@ export default function GameUI() {
 
   const avgAccuracy = stats.accuracies.length > 0 ? stats.accuracies.reduce((a, b) => a + b, 0) / stats.accuracies.length : 0;
   const avgAccuracyPct = avgAccuracy * 100;
-  const totalSecondsUsed = Math.max(0, initialSessionSecondsRef.current - timeLeftSec);
+  const totalSecondsUsed = gameEndedSecondsUsedRef.current !== null
+    ? gameEndedSecondsUsedRef.current
+    : Math.max(0, initialSessionSecondsRef.current - timeLeftSec);
   const headerTitle = `ROUND ${roundNumber} OF ${TOTAL_ROUNDS}: ${formatTitle(currentRoundData?.type).toUpperCase()}`;
   const inputLocked = busy || attemptsRemaining === 0 || lastResult?.passed === true;
   const currentAccuracy = lastResult ? Math.min(100, Math.max(0, lastResult.score)) : 0;
