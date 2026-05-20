@@ -2918,15 +2918,15 @@ export default function GameUI() {
 
             <div className="relative z-10">
               <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
-                <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Debriefing Report
+                <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Game Summary
               </h2>
               <div className="space-y-4 font-mono text-sm">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                  <span className="text-slate-500 uppercase tracking-widest text-xs">Operative Identity</span>
+                  <span className="text-slate-500 uppercase tracking-widest text-xs">Player</span>
                   <span className="font-bold text-slate-200">{player.name}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                  <span className="text-slate-500 uppercase tracking-widest text-xs">Sectors Cleared</span>
+                  <span className="text-slate-500 uppercase tracking-widest text-xs">Rounds Completed</span>
                   <span className="font-bold text-slate-200">{stats.roundsCompleted} / {TOTAL_ROUNDS}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -2938,7 +2938,7 @@ export default function GameUI() {
                   <span className="font-bold text-slate-200">{violations} / 3</span>
                 </div>
                 <div className="flex justify-between items-center bg-cyan-950/20 p-4 rounded border border-cyan-900/30 mt-4 shadow-inner">
-                  <span className="text-cyan-600 font-bold uppercase tracking-widest text-xs">Neural Precision</span>
+                  <span className="text-cyan-600 font-bold uppercase tracking-widest text-xs">Average Accuracy</span>
                   <span className="text-cyan-400 font-black text-lg">
                     {stats.accuracies.length > 0 ? avgAccuracyPct.toFixed(1) : "0.0"}%
                   </span>
