@@ -270,6 +270,8 @@ export default function GameUI() {
   const roundWallStartedAtRef = useRef<number>(0);
   const initialSessionSecondsRef = useRef<number>(0);
   const gameEndedSecondsUsedRef = useRef<number | null>(null);
+  const submittingRef = useRef(false);
+  const pendingGameOverRef = useRef(false);
   const passAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadlineRef = useRef<number>(0);
   const gameStartedAtRef = useRef<number>(0);
@@ -377,7 +379,7 @@ export default function GameUI() {
 
   const syncRoundFromServer = useEffectEvent(() => {
     const sid = sessionRef.current;
-    if (!sid || document.hidden) return;
+    if (!sid || document.hidden || submittingRef.current) return;
     void refreshRound(sid);
   });
 
@@ -557,39 +559,66 @@ export default function GameUI() {
     return () => clearTimeout(timer);
   }, [showPreviousOutput, pendingFinish]);
 
-  // Fetch leaderboard when game finishes
+  // Fetch leaderboard when game finishes, with a retry if the player isn't
+  // in the first result (MongoDB persistence may not have completed yet).
   useEffect(() => {
     if (phase !== "finished") return;
-    fetch(`/api/leaderboard?t=${Date.now()}`)
-      .then((res) => res.json())
-      .then((data) => {
+
+    let cancelled = false;
+
+    const applyList = (list: LeaderboardEntry[]) => {
+      if (cancelled) return;
+      const alreadyPresent = list.some(
+        (p) => p.email === player.email || p.name === player.name
+      );
+      if (!alreadyPresent && (player.email || player.name)) {
+        const completedAt = Date.now();
+        const startedAt = gameStartedAtRef.current || (completedAt - SESSION_TIME_LIMIT_MS);
+        const accuracies = stats.accuracies.filter((v) => v > 0);
+        const avgScore = accuracies.length > 0
+          ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
+          : 0;
+        const synthetic: LeaderboardEntry = {
+          playerId: sessionId ?? `${player.email}-${startedAt}`,
+          name: player.name || "You",
+          email: player.email || undefined,
+          roundsPlayed: stats.roundsCompleted,
+          startedAt,
+          completedAt,
+          averageScore: avgScore,
+        };
+        setLeaderboardData([...list, synthetic]);
+        return false; // player not found in DB yet
+      }
+      setLeaderboardData(list);
+      return true; // player found
+    };
+
+    const fetchLeaderboard = async () => {
+      try {
+        const res = await fetch(`/api/leaderboard?t=${Date.now()}`);
+        const data = await res.json();
         if (!Array.isArray(data.leaderboard)) return;
-        const list: LeaderboardEntry[] = data.leaderboard;
-        const alreadyPresent = list.some(
-          (p) => p.email === player.email || p.name === player.name
-        );
-        if (!alreadyPresent && (player.email || player.name)) {
-          const completedAt = Date.now();
-          const startedAt = gameStartedAtRef.current || (completedAt - SESSION_TIME_LIMIT_MS);
-          const accuracies = stats.accuracies.filter((v) => v > 0);
-          const avgScore = accuracies.length > 0
-            ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
-            : 0;
-          const synthetic: LeaderboardEntry = {
-            playerId: sessionId ?? `${player.email}-${startedAt}`,
-            name: player.name || "You",
-            email: player.email || undefined,
-            roundsPlayed: stats.roundsCompleted,
-            startedAt,
-            completedAt,
-            averageScore: avgScore,
-          };
-          setLeaderboardData([...list, synthetic]);
-        } else {
-          setLeaderboardData(list);
-        }
-      })
-      .catch(() => { });
+        return applyList(data.leaderboard as LeaderboardEntry[]);
+      } catch {
+        return true; // don't retry on network error
+      }
+    };
+
+    // Wait 1.5 s for MongoDB persistence to complete, then fetch
+    const t1 = setTimeout(async () => {
+      const found = await fetchLeaderboard();
+      // If the player wasn't in the DB yet, retry once after 3 more seconds
+      if (!found) {
+        const t2 = setTimeout(fetchLeaderboard, 3_000);
+        return () => clearTimeout(t2);
+      }
+    }, 1_500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t1);
+    };
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -767,7 +796,7 @@ export default function GameUI() {
         return;
       }
       if (!data.sessionId) {
-        setError(data.error ?? "Could not initialize sequence.");
+        setError(data.error ?? "Could not start the game.");
         setPhase("register");
         return;
       }
@@ -788,10 +817,10 @@ export default function GameUI() {
         setMessage(null);
       } catch (e) {
         setMessage(null);
-        setError(e instanceof Error ? e.message : "Failed to load the chamber.");
+        setError(e instanceof Error ? e.message : "Failed to load round.");
       }
     } catch {
-      setError("Network anomaly. Retrying connection...");
+      setError("Network error. Please retry.");
     } finally {
       setBusy(false);
     }
@@ -908,6 +937,7 @@ export default function GameUI() {
 
     setError(null);
     setBusy(true);
+    submittingRef.current = true;
     try {
       const res = await fetch("/api/evaluate", {
         method: "POST",
@@ -994,7 +1024,6 @@ export default function GameUI() {
       }
 
       if (status === "NO_ATTEMPTS_LEFT") {
-        // Record score if the post-eval path ran (has finalScore)
         if (typeof data.finalScore === "number") {
           recordRoundScore(finalScore);
         }
@@ -1002,8 +1031,15 @@ export default function GameUI() {
           ...prev,
           terminalStatus: roundNumber >= TOTAL_ROUNDS ? "COMPLETED" : "FAILED",
         }));
-        setError("No attempts left. Game over.");
-        finishGame();
+        const noAttemptsOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
+        if (!isClassify && noAttemptsOutput) {
+          pendingGameOverRef.current = true;
+          setPreviousAttempt({ prompt: promptInput, output: noAttemptsOutput, score: finalScore * 100 });
+          setShowPreviousOutput(true);
+        } else {
+          setError("No attempts left. Game over.");
+          finishGame();
+        }
         return;
       }
 
@@ -1033,21 +1069,27 @@ export default function GameUI() {
         const rawOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
 
         if (isClassify) {
-          // Parse classify output and show per-question results + penalty warning
-          try {
-            const parsed = JSON.parse(rawOutput) as { details?: ClassifyDetail[] };
-            const attemptsUsedSoFar = (data.attemptsThisRound as number | undefined) ?? 1;
-            const attemptsLeft = (ar ?? 0);
-            const nextPenalty = attemptsLeft > 0 ? attemptsUsedSoFar * 5 : 0;
-            setPreviousAttempt({
-              prompt: "",
-              output: rawOutput,
-              score: finalScore * 100,
-              classifyDetails: parsed.details,
-              penaltyWarningPct: nextPenalty,
-            });
-            setShowPreviousOutput(true);
-          } catch { /* no-op */ }
+          // Build per-question results directly from client state (evaluateClassifyRound
+          // returns no `output` field, so rawOutput is always empty and JSON.parse would fail)
+          const parts = currentRoundData?.promptParts ?? [];
+          const submittedAnswers = answers ?? {};
+          const attemptsUsedSoFar = (data.attemptsThisRound as number | undefined) ?? 1;
+          const nextPenalty = (ar ?? 0) > 0 ? attemptsUsedSoFar * 5 : 0;
+          const classifyFailDetails: ClassifyDetail[] = parts.map((p) => ({
+            id: p.id,
+            text: p.text,
+            chosen: submittedAnswers[p.id] ?? null,
+            correct: p.answer,
+            isCorrect: submittedAnswers[p.id] === p.answer,
+          }));
+          setPreviousAttempt({
+            prompt: "",
+            output: "",
+            score: finalScore * 100,
+            classifyDetails: classifyFailDetails,
+            penaltyWarningPct: nextPenalty,
+          });
+          setShowPreviousOutput(true);
         } else {
           setPreviousAttempt({ prompt: promptInput, output: rawOutput, score: finalScore * 100 });
           setShowPreviousOutput(true);
@@ -1103,7 +1145,7 @@ export default function GameUI() {
             text: p.text,
             chosen: submittedAnswers[p.id] ?? null,
             correct: p.answer,
-            isCorrect: true,
+            isCorrect: submittedAnswers[p.id] === p.answer,
           }));
           setPreviousAttempt({
             prompt: "",
@@ -1164,6 +1206,7 @@ export default function GameUI() {
       setError("Something went wrong. Please try again.");
     } finally {
       setBusy(false);
+      submittingRef.current = false;
     }
   };
 
@@ -1551,7 +1594,7 @@ export default function GameUI() {
                 <h1 className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)] tracking-widest uppercase">Admin Terminal</h1>
                 <div className="flex gap-2 bg-black/50 p-1 rounded border border-cyan-900/30">
                   <button onClick={() => setAdminTab("preview")} className={`px-4 py-2 rounded text-sm font-bold uppercase tracking-wider transition-all ${adminTab === "preview" ? "bg-cyan-900/60 text-cyan-200 border border-cyan-700 shadow-[0_0_10px_rgba(34,211,238,0.2)]" : "text-cyan-800 hover:text-cyan-500"}`}>Simulation Matrix</button>
-                  <button onClick={() => setAdminTab("leaderboard")} className={`px-4 py-2 rounded text-sm font-bold uppercase tracking-wider transition-all ${adminTab === "leaderboard" ? "bg-cyan-900/60 text-cyan-200 border border-cyan-700 shadow-[0_0_10px_rgba(34,211,238,0.2)]" : "text-cyan-800 hover:text-cyan-500"}`}>Operative Roster</button>
+                  <button onClick={() => setAdminTab("leaderboard")} className={`px-4 py-2 rounded text-sm font-bold uppercase tracking-wider transition-all ${adminTab === "leaderboard" ? "bg-cyan-900/60 text-cyan-200 border border-cyan-700 shadow-[0_0_10px_rgba(34,211,238,0.2)]" : "text-cyan-800 hover:text-cyan-500"}`}>Players</button>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -1584,7 +1627,7 @@ export default function GameUI() {
             {adminTab === "preview" && (
               <div className="flex flex-col gap-4">
               <div className="flex items-center gap-4 bg-black/40 p-4 rounded border border-cyan-900/30">
-                  <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm">Select Sector:</label>
+                  <label className="text-cyan-600 font-bold uppercase tracking-widest text-sm">Select Round:</label>
                   <select value={adminRoundNumber} onChange={(e) => { setAdminRoundNumber(Number(e.target.value)); setAdminSetIndex(0); }} className="bg-black text-cyan-300 border border-cyan-800 rounded p-2 outline-none focus:ring-1 focus:ring-cyan-500 font-mono">
                     {Array.from({ length: TOTAL_ROUNDS }, (_, idx) => (
                       <option key={idx + 1} value={idx + 1}>Round {idx + 1}</option>
@@ -1619,7 +1662,7 @@ export default function GameUI() {
                           <div className="space-y-4 flex flex-col max-h-[600px] overflow-y-auto custom-scrollbar pr-3 pb-4">
                             <div className="bg-slate-900/40 p-5 rounded border border-slate-700/50 shrink-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                               <h3 className="text-sm uppercase tracking-widest text-amber-500/70 mb-3 font-bold flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-amber-500/70"></span> Mission Parameters
+                                <span className="w-2 h-2 rounded-full bg-amber-500/70"></span> Instructions
                               </h3>
                               <p className="text-md leading-relaxed text-slate-300 font-mono">{previewRound.instruction}</p>
                             </div>
@@ -1627,7 +1670,7 @@ export default function GameUI() {
                             {previewRound.originalPrompt && (
                               <div className="bg-red-950/20 p-5 rounded border border-red-900/30 shrink-0">
                                 <h3 className="text-sm uppercase tracking-widest text-red-500/70 mb-3 font-bold flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-red-500/70 animate-pulse"></span> Corrupted Sequence
+                                  <span className="w-2 h-2 rounded-full bg-red-500/70 animate-pulse"></span> Original Prompt
                                 </h3>
                                 <div className="font-mono text-sm text-red-300/80 bg-black/60 p-3 rounded border border-red-900/50">
                                   &quot;{previewRound.originalPrompt}&quot;
@@ -1650,7 +1693,7 @@ export default function GameUI() {
 
                             {previewRound.input && (
                               <div className="bg-black/60 p-4 rounded border border-slate-800 shrink-0">
-                                <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">Raw Input Data</h3>
+                                <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">Input Data</h3>
                                 <div className="font-mono text-xs text-slate-400 whitespace-pre-wrap">
                                   {previewRound.input}
                                 </div>
@@ -1785,13 +1828,13 @@ export default function GameUI() {
                 <div className="screen-glare absolute inset-0 rounded-xl" />
                 <div className="relative z-10">
                   <h2 className="text-xl font-mono font-bold border-b border-cyan-900/50 pb-4 mb-6 text-cyan-400 flex items-center gap-3 uppercase tracking-widest">
-                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Operative Roster
+                    <span className="bg-cyan-500 w-2 h-2 rounded-full"></span> Players
                   </h2>
                   <div className="max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                     {filteredAdminPlayers.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-12 border border-dashed border-cyan-900/50 rounded bg-cyan-950/10">
                         <span className="text-3xl mb-3 opacity-50">📡</span>
-                        <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No operatives registered.</p>
+                        <p className="text-cyan-700 font-mono text-sm uppercase tracking-widest">No players registered.</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto rounded border border-slate-800">
@@ -1799,9 +1842,9 @@ export default function GameUI() {
                           <thead className="bg-slate-900/80 sticky top-0 z-10">
                             <tr className="border-b border-slate-700 text-cyan-600/70 text-xs uppercase tracking-widest">
                               <th className="p-3 font-bold w-10">#</th>
-                              <th className="p-3 font-bold">Operative</th>
+                              <th className="p-3 font-bold">Player</th>
                               <th className="p-3 font-bold text-center">Location</th>
-                              <th className="p-3 font-bold text-center">Sectors</th>
+                              <th className="p-3 font-bold text-center">Rounds</th>
                               <th className="p-3 font-bold text-center">Duration</th>
                               <th className="p-3 font-bold text-center">Accuracy</th>
                               <th className="p-3 font-bold text-center">Attempts</th>
@@ -1954,7 +1997,7 @@ export default function GameUI() {
                 <p className="text-slate-400 mt-2 text-sm font-mono tracking-wide">Please read the rules before starting.</p>
               </div>
               <button onClick={() => setPhase("welcome")} className="text-slate-500 hover:text-slate-300 text-xs font-bold uppercase tracking-widest transition-colors font-mono">
-                [ ABORT & RETURN ]
+                ← Back
               </button>
             </div>
 
@@ -2043,7 +2086,7 @@ export default function GameUI() {
 
           <div className="relative z-10">
             <button onClick={() => setPhase("instructions")} className="absolute -top-2 -left-2 text-slate-500 hover:text-slate-300 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono">
-              [ ABORT ]
+              ← Back
             </button>
 
             <div className="flex flex-col gap-6 mt-8">
@@ -2438,7 +2481,7 @@ export default function GameUI() {
                 >
                   <div className="bg-slate-900/40 p-5 rounded border border-slate-700/50 shrink-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
                     <h3 className="text-sm uppercase tracking-widest text-amber-500/70 mb-3 font-bold flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-500/70"></span> Mission Parameters
+                      <span className="w-2 h-2 rounded-full bg-amber-500/70"></span> Instructions
                     </h3>
                     <p className="text-md leading-relaxed text-slate-300 font-mono">{currentRoundData.instruction}</p>
                   </div>
@@ -2446,7 +2489,7 @@ export default function GameUI() {
                   {currentRoundData.originalPrompt && (
                     <div className="bg-red-950/20 p-5 rounded border border-red-900/30 shrink-0">
                       <h3 className="text-sm uppercase tracking-widest text-red-500/70 mb-3 font-bold flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-500/70 animate-pulse"></span> Corrupted Sequence
+                        <span className="w-2 h-2 rounded-full bg-red-500/70 animate-pulse"></span> Original Prompt
                       </h3>
                       <div className="font-mono text-sm text-red-300/80 bg-black/60 p-3 rounded border border-red-900/50">
                         &quot;{currentRoundData.originalPrompt}&quot;
@@ -2469,7 +2512,7 @@ export default function GameUI() {
 
                   {currentRoundData.input && (
                     <div className="bg-black/60 p-4 rounded border border-slate-800 shrink-0">
-                      <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">Raw Input Data</h3>
+                      <h3 className="text-xs uppercase tracking-widest text-slate-500 mb-2 font-bold">Input Data</h3>
                       <div className="font-mono text-xs text-slate-400 whitespace-pre-wrap">
                         {currentRoundData.input}
                       </div>
@@ -2709,7 +2752,10 @@ export default function GameUI() {
           onClick={() => {
             setShowPreviousOutput(false);
             if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
-            if (pendingFinish) {
+            if (pendingGameOverRef.current) {
+              pendingGameOverRef.current = false;
+              finishGame();
+            } else if (pendingFinish) {
               setPendingFinish(false);
               setPhase("finished");
               setMessage("All rounds complete!");
@@ -2750,7 +2796,10 @@ export default function GameUI() {
                 onClick={() => {
                   setShowPreviousOutput(false);
                   if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
-                  if (pendingFinish) {
+                  if (pendingGameOverRef.current) {
+                    pendingGameOverRef.current = false;
+                    finishGame();
+                  } else if (pendingFinish) {
                     setPendingFinish(false);
                     setPhase("finished");
                     setMessage("All rounds complete!");
@@ -2813,7 +2862,10 @@ export default function GameUI() {
                 onClick={() => {
                   setShowPreviousOutput(false);
                   if (roundNumber === 5 && !r5HintUnlocked) setR5HintUnlocked(true);
-                  if (pendingFinish) {
+                  if (pendingGameOverRef.current) {
+                    pendingGameOverRef.current = false;
+                    finishGame();
+                  } else if (pendingFinish) {
                     setPendingFinish(false);
                     setPhase("finished");
                     setMessage("All rounds complete!");
@@ -3008,9 +3060,26 @@ export default function GameUI() {
                 </div>
               )}
 
-              <p className="mt-8 text-center text-[10px] text-slate-600 font-mono tracking-[0.2em] uppercase">
-                {"// Uplink severed. Log recorded. //"}
-              </p>
+              {(metaPromptInput || generatedPrompt) && (
+                <div className="mt-6 border-t border-slate-800 pt-6">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-purple-500 mb-4 flex items-center gap-2">
+                    <span className="bg-purple-500/40 w-1.5 h-1.5 rounded-full inline-block"></span>
+                    Bonus Round
+                  </h3>
+                  {metaPromptInput && (
+                    <div className="mb-4">
+                      <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">Meta-Prompt</div>
+                      <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap bg-slate-900 border border-slate-800 rounded p-3 leading-relaxed">{metaPromptInput}</pre>
+                    </div>
+                  )}
+                  {generatedPrompt && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">Generated Prompt</div>
+                      <pre className="text-xs font-mono text-purple-300/80 whitespace-pre-wrap bg-slate-900 border border-purple-900/30 rounded p-3 leading-relaxed">{generatedPrompt}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
