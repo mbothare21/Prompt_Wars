@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 const BONUS_SCORE_THRESHOLD = 0.92;
 const EVALUATOR_TIMEOUT_MS = (() => {
   const parsed = Number(process.env.EVALUATOR_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 })();
 
 function withTimeout<T>(promise: Promise<T>, ms = EVALUATOR_TIMEOUT_MS): Promise<T> {

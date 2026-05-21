@@ -275,6 +275,7 @@ export default function GameUI() {
   const passAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadlineRef = useRef<number>(0);
   const gameStartedAtRef = useRef<number>(0);
+  const roundNumberRef = useRef<number>(1);
 
   const applyRoundPayload = useCallback((data: RoundPayload) => {
     const max = data.maxAttemptsThisRound ?? 3;
@@ -282,6 +283,12 @@ export default function GameUI() {
 
     startTransition(() => {
       if (typeof data.roundNumber === "number") {
+        if (data.roundNumber !== roundNumberRef.current) {
+          // Advancing to a new round — clear stale per-round UI state
+          setLastResult(null);
+          setPreviousAttempt(null);
+        }
+        roundNumberRef.current = data.roundNumber;
         setRoundNumber(data.roundNumber);
       }
       if (typeof data.remainingTime === "number") {
@@ -408,7 +415,7 @@ export default function GameUI() {
         };
         if (s.player) setPlayer(s.player);
         if (s.sessionId) setSessionId(s.sessionId);
-        if (typeof s.roundNumber === "number") setRoundNumber(s.roundNumber);
+        if (typeof s.roundNumber === "number") { roundNumberRef.current = s.roundNumber; setRoundNumber(s.roundNumber); }
         if (s.stats) setStats(s.stats);
         if (typeof s.violations === "number") setViolations(s.violations);
         if (typeof s.initialSessionSeconds === "number") {
@@ -836,7 +843,11 @@ export default function GameUI() {
 
     if (currentRoundData?.type === "CLASSIFY") {
       const requiredParts = currentRoundData.promptParts?.length ?? 0;
-      if (Object.keys(newSelections).length === requiredParts) {
+      const prevCount = Object.keys(dropdownSelections).length;
+      // Only auto-submit when filling the last empty slot for the first time.
+      // If all slots were already filled (retry after failed attempt), the player
+      // must use the Submit button to avoid burning an attempt on each change.
+      if (Object.keys(newSelections).length === requiredParts && prevCount < requiredParts) {
         setTimeout(() => {
           void submitPrompt(newSelections);
         }, 300);
@@ -2663,7 +2674,25 @@ export default function GameUI() {
                     )}
                   </div>
 
-                  {currentRoundData.type !== "CLASSIFY" && (
+                  {currentRoundData.type === "CLASSIFY" ? (
+                    (() => {
+                      const requiredParts = currentRoundData.promptParts?.length ?? 0;
+                      const allAnswered = Object.keys(dropdownSelections).length === requiredParts;
+                      const prevAttemptExists = !!previousAttempt && !lastResult?.passed;
+                      // Show submit button only in retry mode (all slots already filled from a prior attempt)
+                      if (!prevAttemptExists || !allAnswered) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => void submitPrompt()}
+                          disabled={inputLocked}
+                          className="bg-slate-800 hover:bg-cyan-900/50 border border-slate-700 hover:border-cyan-700 text-slate-400 hover:text-cyan-300 disabled:bg-black/50 disabled:border-slate-800 disabled:text-slate-700 p-4 rounded font-bold text-sm tracking-widest uppercase transition-all shadow-lg"
+                        >
+                          {busy ? "Submitting..." : "Submit"}
+                        </button>
+                      );
+                    })()
+                  ) : (
                     <button
                       type="button"
                       onClick={() => void submitPrompt()}

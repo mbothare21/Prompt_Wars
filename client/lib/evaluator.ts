@@ -523,13 +523,15 @@ async function evaluateOptimizeRound(round: Round, userPrompt: string) {
     return { finalScore: 0, progress: 0, reason: "Prompt exceeds 15 words" };
   }
 
-  const output = await runPromptWithContext(userPrompt, round.input, "Task");
+  const [output, baseline] = await Promise.all([
+    runPromptWithContext(userPrompt, round.input, "Task"),
+    getOptimizeBaseline(round),
+  ]);
   const scored = await scoreOptimizeOutcome(
     round,
     userPrompt,
     output
   );
-  const baseline = await getOptimizeBaseline(round);
   const baselineGate = scoreBaselineGate(
     scored.taskOutputScore,
     baseline.baselineScore,
@@ -860,13 +862,15 @@ async function getBonusBaseline(basePrompt: string, config: BonusEvalConfig) {
 }
 
 async function evaluateImproveRound(round: Round, userPrompt: string) {
-  const output = await runPromptWithContext(userPrompt, round.input, "Source Text");
+  const [output, baseline] = await Promise.all([
+    runPromptWithContext(userPrompt, round.input, "Source Text"),
+    getImproveBaseline(round),
+  ]);
   const scored = await scoreImproveOutcome(
     round,
     userPrompt,
     output
   );
-  const baseline = await getImproveBaseline(round);
   const baselineGate = scoreBaselineGate(
     scored.taskOutputScore,
     baseline.baselineScore,
@@ -888,13 +892,15 @@ async function evaluateImproveRound(round: Round, userPrompt: string) {
 }
 
 async function evaluateReverseRound(round: Round, userPrompt: string) {
-  const output = await runPromptWithContext(userPrompt);
+  const [output, baseline] = await Promise.all([
+    runPromptWithContext(userPrompt),
+    getReverseBaseline(round),
+  ]);
   const scored = await scoreReverseOutcome(
     round,
     userPrompt,
     output
   );
-  const baseline = await getReverseBaseline(round);
   const baselineGate = scoreBaselineGate(
     scored.taskOutputScore,
     baseline.baselineScore,
@@ -917,13 +923,15 @@ async function evaluateReverseRound(round: Round, userPrompt: string) {
 }
 
 async function evaluateStructuredRound(round: Round, userPrompt: string) {
-  const output = await runPromptWithContext(userPrompt, round.input, "Problem");
+  const [output, baseline] = await Promise.all([
+    runPromptWithContext(userPrompt, round.input, "Problem"),
+    getStructuredBaseline(round),
+  ]);
   const scored = await scoreStructuredOutcome(
     round,
     userPrompt,
     output
   );
-  const baseline = await getStructuredBaseline(round);
   const baselineGate = scoreBaselineGate(
     scored.taskOutputScore,
     baseline.baselineScore,
