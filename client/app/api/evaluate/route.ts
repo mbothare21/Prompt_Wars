@@ -144,29 +144,55 @@ export async function POST(req: Request) {
 
   if (Number.isFinite(maxAttempts) && session.attemptsPerRound[roundNum] > maxAttempts) {
     const isBonusRound = roundNum > MAIN_ROUNDS;
-    const terminalStatus = isBonusRound ? "COMPLETED" : "FAILED";
     console.log("[evaluate] NO_ATTEMPTS_LEFT:pre-eval", {
       sessionId,
       player: session.player.email ?? session.player.name,
       round: roundNum,
       attemptsUsed: session.attemptsPerRound[roundNum],
       maxAttempts,
-      terminalStatus,
+      isBonusRound,
     });
-    session.status = isBonusRound ? "COMPLETED" : "FAILED";
+
+    if (!isBonusRound) {
+      // Force-advance: record 0 for this round and move to the next round
+      session.pendingRounds = [
+        ...(session.pendingRounds ?? []).filter((r) => r.round !== roundNum),
+        { round: roundNum, attempts: session.attemptsPerRound[roundNum], score: 0, prompt: null, output: "" },
+      ];
+      session.currentRound++;
+      if (session.currentRound > MAIN_ROUNDS) session.bonusUnlocked = true;
+      const metrics = derivePlayerMetrics(session.pendingRounds);
+      session.player.roundsPlayed = metrics.roundsPlayed;
+      session.player.totalScore = metrics.totalScore;
+      session.player.averageScore = metrics.averageScore;
+      await updateSession(sessionId, session);
+      await persistProgressSnapshot(session).catch((e) =>
+        console.error("[evaluate] MongoDB force-advance snapshot error:", e)
+      );
+      const remaining = Math.max(0, (session.timeLimit - (session.penaltyTimeSec ?? 0) * 1000) - (Date.now() - session.startTime));
+      return Response.json({
+        status: "ROUND_FORCE_ADVANCED",
+        nextRound: session.currentRound,
+        attemptsThisRound: session.attemptsPerRound[roundNum],
+        remainingTime: remaining,
+        finalScore: 0,
+        progress: 0,
+      });
+    }
+
+    // Bonus round: end game as completed
+    session.status = "COMPLETED";
     session.completed = true;
     session.player.completed = true;
     session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
-    session.player.gameStatus = isBonusRound ? "COMPLETED" : "FAILED";
+    session.player.gameStatus = "COMPLETED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
-
-    await persistTerminalSession(session, terminalStatus).catch((e) =>
-      console.error("[evaluate] MongoDB attempts-exhausted error:", e)
+    await persistTerminalSession(session, "COMPLETED").catch((e) =>
+      console.error("[evaluate] MongoDB bonus-exhausted error:", e)
     );
-
     return Response.json({
       status: "NO_ATTEMPTS_LEFT",
       round: roundNum,
@@ -271,11 +297,8 @@ export async function POST(req: Request) {
   session.player.averageScore = metrics.averageScore;
 
   const passThreshold = PASS_THRESHOLDS[roundNum] ?? 0.60;
-  // Compare rounded scores (same value the player sees) to avoid floating-point
-  // edge cases where 0.5989 rounds to 60% on screen but fails a 0.60 threshold.
-  const roundedScore = Math.round(finalScore * 100) / 100;
-
-  if (roundedScore >= passThreshold) {
+  // Use the raw score for progression so display rounding never grants a pass.
+  if (finalScore >= passThreshold) {
     session.currentRound++;
     if (session.currentRound > 5) {
       session.bonusUnlocked = true;
@@ -335,7 +358,6 @@ export async function POST(req: Request) {
     (session.attemptsPerRound[roundNum] ?? 0) >= maxAttempts
   ) {
     const isBonusRound = roundNum > MAIN_ROUNDS;
-    const terminalStatus = isBonusRound ? "COMPLETED" : "FAILED";
     console.log("[evaluate] NO_ATTEMPTS_LEFT:post-eval", {
       sessionId,
       player: session.player.email ?? session.player.name,
@@ -343,22 +365,56 @@ export async function POST(req: Request) {
       attemptsUsed: session.attemptsPerRound[roundNum],
       maxAttempts,
       finalScore,
-      terminalStatus,
+      isBonusRound,
     });
-    session.status = isBonusRound ? "COMPLETED" : "FAILED";
+
+    if (!isBonusRound) {
+      // Force-advance: override this round's score to 0 and move to the next round
+      session.pendingRounds = [
+        ...(session.pendingRounds ?? []).filter((r) => r.round !== roundNum),
+        {
+          round: roundNum,
+          attempts: session.attemptsPerRound[roundNum],
+          score: 0,
+          prompt: round.type === "CLASSIFY" ? answers : prompt,
+          output: ("output" in result ? result.output : undefined) ?? ("finalOutput" in result ? result.finalOutput : undefined) ?? "",
+        },
+      ];
+      session.currentRound++;
+      if (session.currentRound > MAIN_ROUNDS) session.bonusUnlocked = true;
+      const metrics = derivePlayerMetrics(session.pendingRounds);
+      session.player.roundsPlayed = metrics.roundsPlayed;
+      session.player.totalScore = metrics.totalScore;
+      session.player.averageScore = metrics.averageScore;
+      await updateSession(sessionId, session);
+      await persistProgressSnapshot(session).catch((e) =>
+        console.error("[evaluate] MongoDB force-advance snapshot error:", e)
+      );
+      const remaining = Math.max(0, (session.timeLimit - (session.penaltyTimeSec ?? 0) * 1000) - (Date.now() - session.startTime));
+      return Response.json({
+        status: "ROUND_FORCE_ADVANCED",
+        nextRound: session.currentRound,
+        attemptsThisRound: session.attemptsPerRound[roundNum],
+        remainingTime: remaining,
+        ...result,
+        finalScore: 0,
+        progress: 0,
+      });
+    }
+
+    // Bonus round: end game as completed
+    session.status = "COMPLETED";
     session.completed = true;
     session.player.completed = true;
     session.player.completedAt = Date.now();
     session.player.attemptsPerRound = { ...session.attemptsPerRound };
     session.player.timeLimit = session.timeLimit;
-    session.player.gameStatus = isBonusRound ? "COMPLETED" : "FAILED";
+    session.player.gameStatus = "COMPLETED";
     savePlayer(session.player);
     await updateSession(sessionId, session);
-
-    await persistTerminalSession(session, terminalStatus).catch((e) =>
+    await persistTerminalSession(session, "COMPLETED").catch((e) =>
       console.error("[evaluate] MongoDB final-attempt failure error:", e)
     );
-
     return Response.json({
       status: "NO_ATTEMPTS_LEFT",
       round: roundNum,

@@ -14,7 +14,7 @@ export const PASS_THRESHOLDS: Record<number, number> = {
 };
 
 export const ATTEMPT_LIMITS: Record<number, number> = {
-  1: 5,
+  1: 3,
   2: 3,
   3: 3,
   4: 3,

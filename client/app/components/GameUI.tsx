@@ -14,6 +14,7 @@ import {
   ATTEMPT_LIMITS,
   MAIN_ROUNDS,
   PASS_ADVANCE_MS,
+  PASS_THRESHOLDS,
   SESSION_TIME_LIMIT_MS,
   SESSION_POLL_INTERVAL_MS,
   TOTAL_ROUNDS,
@@ -21,6 +22,10 @@ import {
 } from "@/lib/gameConstants";
 import { compareCompetitiveStanding } from "@/lib/ranking";
 import { getAdminPreviewRound, ROUND_SET_COUNTS } from "@/lib/generateRounds";
+import {
+  buildCrossRoundCoachingSummary,
+  collapseAttemptsToRoundScores,
+} from "@/lib/coachingSummary";
 import type { PromptPart } from "@/lib/types";
 
 type GamePhase = "splash" | "admin-login" | "admin-view" | "welcome" | "instructions" | "register" | "orientation" | "playing" | "bonus" | "finished";
@@ -223,6 +228,7 @@ export default function GameUI() {
     output: string;
     score: number;
     isPassed?: boolean;
+    isForceAdvanced?: boolean;
     classifyDetails?: ClassifyDetail[];
     penaltyWarningPct?: number;
   };
@@ -581,9 +587,11 @@ export default function GameUI() {
       if (!alreadyPresent && (player.email || player.name)) {
         const completedAt = Date.now();
         const startedAt = gameStartedAtRef.current || (completedAt - SESSION_TIME_LIMIT_MS);
-        const accuracies = stats.accuracies.filter((v) => v > 0);
-        const avgScore = accuracies.length > 0
-          ? accuracies.reduce((a, b) => a + b, 0) / accuracies.length
+        const leaderboardScores = stats.accuracies.map((score, idx) => (
+          isSummaryRoundFailed(idx + 1, score) ? 0 : score
+        ));
+        const avgScore = leaderboardScores.length > 0
+          ? leaderboardScores.reduce((a, b) => a + b, 0) / leaderboardScores.length
           : 0;
         const synthetic: LeaderboardEntry = {
           playerId: sessionId ?? `${player.email}-${startedAt}`,
@@ -1034,6 +1042,59 @@ export default function GameUI() {
         return;
       }
 
+      if (status === "ROUND_FORCE_ADVANCED") {
+        // Threshold not cleared after all attempts — advance with score 0 for this round
+        setStats((prev) => {
+          const nextAccuracies = [...prev.accuracies];
+          // Preserve the best attempt for the summary display even though this
+          // round is recorded as a 0 for progression / terminal scoring.
+          nextAccuracies[roundNumber - 1] = Math.max(prev.accuracies[roundNumber - 1] ?? 0, 0);
+          const attThisRound = (data.attemptsThisRound as number | undefined) ?? maxAttemptsThisRound;
+          return {
+            ...prev,
+            accuracies: nextAccuracies,
+            roundsCompleted: Math.max(prev.roundsCompleted, roundNumber),
+            attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
+            lastFinalScore: 0,
+          };
+        });
+        if (typeof data.remainingTime === "number") {
+          deadlineRef.current = Date.now() + (data.remainingTime as number);
+          setTimeLeftSec(Math.max(0, Math.ceil((data.remainingTime as number) / 1000)));
+        }
+        const forceOutput = (data.output as string | undefined) ?? (data.finalOutput as string | undefined) ?? "";
+        if (!isClassify && forceOutput) {
+          setPreviousAttempt({ prompt: promptInput, output: forceOutput, score: 0, isForceAdvanced: true });
+          setShowPreviousOutput(true);
+          setPendingAdvance(true);
+        } else if (isClassify) {
+          const parts = currentRoundData?.promptParts ?? [];
+          const submittedAnswers = answers ?? {};
+          const classifyFailDetails: ClassifyDetail[] = parts.map((p) => ({
+            id: p.id,
+            text: p.text,
+            chosen: submittedAnswers[p.id] ?? null,
+            correct: p.answer,
+            isCorrect: submittedAnswers[p.id] === p.answer,
+          }));
+          setLastResult(buildLastResult(0, false));
+          setPreviousAttempt({
+            prompt: "",
+            output: "",
+            score: 0,
+            isForceAdvanced: true,
+            classifyDetails: classifyFailDetails,
+          });
+          setShowPreviousOutput(true);
+          setPendingAdvance(true);
+        } else {
+          // No output to show (CLASSIFY or pre-eval case) — advance directly
+          const sid = sessionRef.current;
+          if (sid) void refreshRound(sid);
+        }
+        return;
+      }
+
       if (status === "NO_ATTEMPTS_LEFT") {
         if (typeof data.finalScore === "number") {
           recordRoundScore(finalScore);
@@ -1229,6 +1290,19 @@ export default function GameUI() {
 
   const avgAccuracy = stats.accuracies.length > 0 ? stats.accuracies.reduce((a, b) => a + b, 0) / stats.accuracies.length : 0;
   const avgAccuracyPct = avgAccuracy * 100;
+  function isSummaryRoundFailed(roundNum: number, score: number): boolean {
+    const attemptLimit = ATTEMPT_LIMITS[roundNum] ?? Infinity;
+    const passThreshold = PASS_THRESHOLDS[roundNum] ?? 0.6;
+    const attemptsUsed = stats.attemptsPerRound[roundNum] ?? 0;
+    return Number.isFinite(attemptLimit) && attemptsUsed >= attemptLimit && score < passThreshold;
+  }
+  const crossRoundSummary = buildCrossRoundCoachingSummary(
+    stats.accuracies.map((score, idx) => ({
+      round: idx + 1,
+      score,
+      attempts: stats.attemptsPerRound[idx + 1] ?? 0,
+    }))
+  );
   const totalSecondsUsed = gameEndedSecondsUsedRef.current !== null
     ? gameEndedSecondsUsedRef.current
     : Math.max(0, initialSessionSecondsRef.current - timeLeftSec);
@@ -1273,6 +1347,14 @@ export default function GameUI() {
       return "N/A";
     };
 
+    const escapeHtml = (value: string): string =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
     const timeTakenSec = p.timeTaken > 10000 ? Math.round(p.timeTaken / 1000) : p.timeTaken;
     const statusLabel = GAME_STATUS_CONFIG[p.gameStatus ?? ""]?.label ?? p.gameStatus ?? "Unknown";
 
@@ -1289,6 +1371,14 @@ export default function GameUI() {
     const sortedRounds = [...(p.rounds || [])].sort(
       (a, b) => a.round - b.round || (a.attempts ?? 0) - (b.attempts ?? 0)
     );
+    const summaryRounds = collapseAttemptsToRoundScores(
+      sortedRounds.map((round) => ({
+        round: round.round,
+        score: round.score,
+        attempts: round.attempts,
+      }))
+    );
+    const coachingSummary = buildCrossRoundCoachingSummary(summaryRounds);
 
     type ClassifyDetail = { id: string; text: string; chosen: string | null; correct: string; isCorrect: boolean };
     type ClassifyOutput = { correct: number; total: number; details: ClassifyDetail[] };
@@ -1469,6 +1559,15 @@ export default function GameUI() {
         <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Total Attempts</span><br/><strong>${p.attemptsTaken}</strong></div>
         <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Status</span><br/><strong>${statusLabel}</strong></div>
         <div><span style="color:#64748b;font-size:11px;text-transform:uppercase;">Completed At</span><br/><strong>${p.completedAt ? new Date(p.completedAt).toLocaleString() : "N/A"}</strong></div>
+      </div>
+      <div style="margin-bottom:24px;padding:16px;background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;">
+        <div style="font-size:11px;color:#0e7490;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${escapeHtml(coachingSummary.headline)}</div>
+        <div style="font-size:13px;line-height:1.7;color:#155e75;white-space:pre-wrap;">${escapeHtml(coachingSummary.overview)}</div>
+        <div style="display:grid;gap:8px;margin-top:12px;">
+          ${coachingSummary.bullets.map((bullet) => `
+            <div style="font-size:12px;color:#164e63;background:#f0fdff;border:1px solid #a5f3fc;border-radius:6px;padding:10px 12px;line-height:1.6;">${escapeHtml(bullet)}</div>
+          `).join("")}
+        </div>
       </div>
       <h2 style="color:#0891b2;font-size:16px;margin-bottom:16px;border-bottom:2px solid #e2e8f0;padding-bottom:8px;">Round-by-Round Responses</h2>
       ${sortedRounds.length > 0 ? roundsHtml : '<p style="color:#94a3b8;text-align:center;padding:24px;">No round data recorded.</p>'}
@@ -1972,7 +2071,7 @@ export default function GameUI() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
                 <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
                   <h2 className="text-green-500 font-bold mb-2 uppercase tracking-widest">🎯 Primary Objective</h2>
-                  <p className="text-slate-500 leading-relaxed">Complete all rounds with the highest accuracy and speed before the timer runs out.</p>
+                  <p className="text-slate-500 leading-relaxed">Complete all rounds with the highest accuracy and speed before the timer runs out. You always advance — failing a round records 0% for that round.</p>
                 </div>
                 <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
                   <h2 className="text-purple-400 font-bold mb-2 uppercase tracking-widest">🏆 Final Outcome</h2>
@@ -2032,9 +2131,10 @@ export default function GameUI() {
                     🔁 Attempt Limits
                   </h2>
                   <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
-                    <li>Round 1 allows <strong className="text-slate-200">5 attempts</strong>. Rounds 2, 3, and 4 allow <strong className="text-slate-200">3 attempts</strong> each.</li>
-                    <li>Round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
-                    <li>Exhausting attempts on any round ends the game immediately.</li>
+                    <li>Rounds 1–4 allow <strong className="text-slate-200">3 attempts</strong> each. Round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
+                    <li>You <strong className="text-green-400 font-bold">always advance</strong> to the next round — exhausting attempts does not end the game.</li>
+                    <li>If you don&apos;t clear the required score threshold, that round is recorded as <strong className="text-slate-200">0%</strong> in your final accuracy.</li>
+                    <li>A <strong className="text-amber-300">hint 💡</strong> unlocks after your 2nd attempt on each round.</li>
                   </ul>
                 </section>
 
@@ -2804,20 +2904,30 @@ export default function GameUI() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: title + score + close */}
-            <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${previousAttempt.isPassed ? "border-green-900/50" : "border-slate-800"}`}>
+            <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${previousAttempt.isPassed ? "border-green-900/50" : previousAttempt.isForceAdvanced ? "border-amber-900/50" : "border-slate-800"}`}>
               <div className="flex items-center gap-4">
                 {previousAttempt.isPassed ? (
                   <h2 className="text-sm font-mono font-bold text-green-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
                     {pendingFinish ? "Round Complete — AI Response" : "Round Passed — AI Response"}
                   </h2>
+                ) : previousAttempt.classifyDetails ? (
+                  <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    Results
+                  </h2>
+                ) : previousAttempt.isForceAdvanced ? (
+                  <h2 className="text-sm font-mono font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Attempts Exhausted — Moving to Next Round
+                  </h2>
                 ) : (
                   <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                    {previousAttempt.classifyDetails ? "Results" : "AI Response — Not Passed"}
+                    AI Response — Not Passed
                   </h2>
                 )}
-                <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${previousAttempt.isPassed ? "text-green-400 bg-green-950/40 border border-green-900/50" : "text-red-400 bg-red-950/40 border border-red-900/50"}`}>
+                <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${previousAttempt.isPassed ? "text-green-400 bg-green-950/40 border border-green-900/50" : previousAttempt.isForceAdvanced ? "text-amber-400 bg-amber-950/40 border border-amber-900/50" : "text-red-400 bg-red-950/40 border border-red-900/50"}`}>
                   Score: {previousAttempt.score.toFixed(1)}%
                 </span>
               </div>
@@ -2884,6 +2994,8 @@ export default function GameUI() {
                 <p className="text-[10px] text-green-700 font-mono">
                   {pendingFinish ? "Auto-advancing in 15 seconds…" : "This response cleared the threshold — advancing to the next round"}
                 </p>
+              ) : previousAttempt.isForceAdvanced ? (
+                <p className="text-[10px] text-amber-600 font-mono">Score 0% recorded for this round — advancing to the next round</p>
               ) : (
                 <p className="text-[10px] text-slate-600 font-mono">Review the results above, adjust your answer, and try again</p>
               )}
@@ -2908,9 +3020,9 @@ export default function GameUI() {
                     setLastResult(null);
                   }
                 }}
-                className={`px-4 py-2 border rounded text-xs font-mono uppercase tracking-wider transition-all ${previousAttempt.isPassed ? "bg-green-900/40 hover:bg-green-900/60 border-green-800 text-green-300" : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"}`}
+                className={`px-4 py-2 border rounded text-xs font-mono uppercase tracking-wider transition-all ${previousAttempt.isPassed ? "bg-green-900/40 hover:bg-green-900/60 border-green-800 text-green-300" : previousAttempt.isForceAdvanced ? "bg-amber-900/40 hover:bg-amber-900/60 border-amber-800 text-amber-300" : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"}`}
               >
-                {previousAttempt.isPassed ? "Continue →" : "Close"}
+                {previousAttempt.isPassed ? "Continue →" : previousAttempt.isForceAdvanced ? "Next Round →" : "Close"}
               </button>
             </div>
           </div>
@@ -3030,16 +3142,29 @@ export default function GameUI() {
                 <div className="mt-6 border-t border-slate-800 pt-6">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-cyan-500 mb-4 flex items-center gap-2">
                     <span className="bg-cyan-500/40 w-1.5 h-1.5 rounded-full inline-block"></span>
-                    Improvement Analysis
+                    Cross-Round Coaching
                   </h3>
                   <div className="space-y-2 mb-4">
                     {stats.accuracies.map((score, idx) => {
                       const roundNum = idx + 1;
                       const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
+                      const isFailedRound = isSummaryRoundFailed(roundNum, score);
                       const isR1FirstTry = roundNum === 1 && stats.attemptsPerRound[1] === 1;
                       const pct = isR1FirstTry ? 100 : Math.round(score * 100);
-                      const barColor = pct >= 70 ? "bg-green-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
-                      const textColor = pct >= 70 ? "text-green-400" : pct >= 50 ? "text-amber-400" : "text-red-400";
+                      const barColor = isFailedRound
+                        ? "bg-red-500"
+                        : pct >= 70
+                          ? "bg-green-500"
+                          : pct >= 50
+                            ? "bg-amber-500"
+                            : "bg-red-500";
+                      const textColor = isFailedRound
+                        ? "text-red-400"
+                        : pct >= 70
+                          ? "text-green-400"
+                          : pct >= 50
+                            ? "text-amber-400"
+                            : "text-red-400";
                       return (
                         <div key={roundNum} className="flex items-center gap-3 text-xs font-mono">
                           <span className="text-slate-600 w-4 text-right shrink-0">{roundNum}</span>
@@ -3055,37 +3180,19 @@ export default function GameUI() {
                       );
                     })}
                   </div>
-                  {(() => {
-                    const IMPROVEMENT_TIPS: Record<string, string> = {
-                      [ROUND_TYPE_NAMES.CLASSIFY]: "Focus on classification boundaries — avoid broad generalisations.",
-                      [ROUND_TYPE_NAMES.IMPROVE]: "Add explicit constraints and clear structure to guide the model.",
-                      [ROUND_TYPE_NAMES.REVERSE]: "Work backwards from the expected output to find key prompt patterns.",
-                      [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — strip all redundant words.",
-                      [ROUND_TYPE_NAMES.STRUCTURED]: "Follow every format requirement exactly as specified.",
-                      [ROUND_TYPE_NAMES.BONUS]: "Combine specificity, format, and constraints in one tight prompt.",
-                    };
-                    const focusAreas = stats.accuracies
-                      .map((score, idx) => ({ score, label: ROUND_TYPE_LABELS[idx + 1] ?? `Round ${idx + 1}` }))
-                      .filter(({ score }) => score < 0.6);
-                    if (focusAreas.length === 0) {
-                      return (
-                        <div className="text-xs font-mono text-green-600 bg-green-950/20 border border-green-900/30 rounded px-3 py-2">
-                          No weak areas — strong overall performance.
+                  <div className="space-y-3">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono">Summary</div>
+                    <div className="text-xs font-mono bg-cyan-950/20 border border-cyan-900/30 rounded px-3 py-3 text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {crossRoundSummary.overview}
+                    </div>
+                    <div className="grid gap-2">
+                      {crossRoundSummary.bullets.map((bullet) => (
+                        <div key={bullet} className="text-xs font-mono bg-slate-900/60 border border-slate-700 rounded px-3 py-2 text-slate-400 leading-relaxed">
+                          {bullet}
                         </div>
-                      );
-                    }
-                    return (
-                      <div className="space-y-2">
-                        <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono">Focus Areas</div>
-                        {focusAreas.map(({ label }) => (
-                          <div key={label} className="text-xs font-mono bg-red-950/20 border border-red-900/30 rounded px-3 py-2">
-                            <span className="text-red-400 font-bold">{label}:</span>{" "}
-                            <span className="text-slate-400">{IMPROVEMENT_TIPS[label] ?? "Review the round instructions carefully."}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 

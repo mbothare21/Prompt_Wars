@@ -64,6 +64,214 @@ function clamp(n: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
 }
 
+function normalizeForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripLabelMarkers(line: string): string {
+  return line
+    .trim()
+    .replace(/^(?:#{1,6}\s+|[-*•]\s+|\d+[.)]\s+)+/, "")
+    .trim();
+}
+
+function findSectionLineIndex(text: string, section: string): number {
+  const target = normalizeForMatch(section);
+  if (!target) return -1;
+
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = stripLabelMarkers(lines[i]);
+    if (!raw) continue;
+
+    const head = normalizeForMatch(raw.split(/[:\-–]/, 1)[0] ?? raw);
+    if (head === target) return i;
+    if (head.startsWith(`${target} `)) return i;
+  }
+
+  return -1;
+}
+
+function scoreRequiredSections(text: string, sections: string[]): number {
+  if (sections.length === 0) return 1;
+
+  let matched = 0;
+  let ordered = 0;
+  let previousIndex = -1;
+
+  for (const section of sections) {
+    const index = findSectionLineIndex(text, section);
+    if (index >= 0) {
+      matched++;
+      if (index >= previousIndex) {
+        ordered++;
+        previousIndex = index;
+      }
+    }
+  }
+
+  return clamp(0.75 * (matched / sections.length) + 0.25 * (ordered / sections.length));
+}
+
+function scoreSectionMentions(text: string, sections: string[]): number {
+  if (sections.length === 0) return 1;
+
+  const normalized = normalizeForMatch(text);
+  const matched = sections.filter((section) =>
+    normalized.includes(normalizeForMatch(section))
+  ).length;
+  return matched / sections.length;
+}
+
+function extractSectionLabels(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => stripLabelMarkers(line))
+    .map((line) => {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex > 0 && colonIndex <= 40) {
+        return line.slice(0, colonIndex).trim();
+      }
+      return line.replace(/:\s*$/, "").trim();
+    })
+    .filter((line) => line.length > 0);
+}
+
+const STOPWORDS = new Set([
+  "about",
+  "after",
+  "again",
+  "also",
+  "among",
+  "another",
+  "around",
+  "because",
+  "before",
+  "between",
+  "both",
+  "could",
+  "during",
+  "each",
+  "from",
+  "have",
+  "having",
+  "into",
+  "just",
+  "more",
+  "most",
+  "must",
+  "next",
+  "only",
+  "other",
+  "over",
+  "same",
+  "should",
+  "since",
+  "some",
+  "than",
+  "that",
+  "their",
+  "there",
+  "these",
+  "this",
+  "those",
+  "through",
+  "under",
+  "very",
+  "when",
+  "where",
+  "while",
+  "with",
+  "without",
+  "would",
+  "write",
+  "prompt",
+  "output",
+  "section",
+  "sections",
+  "summary",
+  "structured",
+  "final",
+  "answer",
+  "step",
+  "steps",
+]);
+
+function collectMeaningfulTokens(text: string, limit = 16): string[] {
+  const seen = new Set<string>();
+  const tokens = text.toLowerCase().match(/[a-z][a-z0-9'-]*/g) ?? [];
+  const result: string[] = [];
+
+  for (const token of tokens) {
+    if (token.length < 4 || STOPWORDS.has(token)) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    result.push(token);
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+function scoreTokenGrounding(text: string, source: string): number {
+  const sourceTokens = collectMeaningfulTokens(source);
+  if (sourceTokens.length === 0) return 1;
+
+  const outputTokens = new Set(collectMeaningfulTokens(text, 64));
+  const matched = sourceTokens.filter((token) => outputTokens.has(token)).length;
+  return clamp(matched / sourceTokens.length);
+}
+
+function scoreConcreteStructuredSolution(input: string, output: string): number {
+  const inputLower = input.toLowerCase();
+  const outputLower = output.toLowerCase();
+
+  if (/\bwolf\b/.test(inputLower) && /\bgoat\b/.test(inputLower) && /\bcabbage\b/.test(inputLower)) {
+    const mentionsActors = ["wolf", "goat", "cabbage"].every((token) => outputLower.includes(token));
+    const mentionsSteps = /\b(step|first|second|third|then|return|cross)\b/.test(outputLower);
+    const mentionsAnswer = /\b17\b/.test(outputLower) || /\b17\s*minutes?\b/.test(outputLower);
+    return clamp(
+      (mentionsActors ? 0.45 : 0) +
+      (mentionsSteps ? 0.30 : 0) +
+      (mentionsAnswer ? 0.25 : 0)
+    );
+  }
+
+  if (/\b5-liter bucket\b/.test(inputLower) && /\b3-liter bucket\b/.test(inputLower)) {
+    const mentionsSizes =
+      (/\b5\s*-?\s*liter\b/.test(outputLower) || /\b5l\b/.test(outputLower)) &&
+      (/\b3\s*-?\s*liter\b/.test(outputLower) || /\b3l\b/.test(outputLower));
+    const mentionsGoal = /\b4\s*liters?\b/.test(outputLower);
+    const mentionsActions = /\b(fill|empty|pour|transfer)\b/.test(outputLower);
+    const mentionsSteps = /\b(step|first|second|then|sequence|1\.)\b/.test(outputLower);
+    return clamp(
+      (mentionsSizes ? 0.25 : 0) +
+      (mentionsGoal ? 0.35 : 0) +
+      (mentionsActions ? 0.20 : 0) +
+      (mentionsSteps ? 0.20 : 0)
+    );
+  }
+
+  if (/\btraveler a\b/.test(inputLower) && /\bflashlight\b/.test(inputLower)) {
+    const mentionsTimes = ["1", "2", "7", "10"].every((n) => new RegExp(`\\b${n}\\b`).test(outputLower));
+    const mentionsFlashlight = /\bflashlight\b/.test(outputLower) || /\btorch\b/.test(outputLower);
+    const mentionsAnswer = /\b17\b/.test(outputLower) || /\b17\s*minutes?\b/.test(outputLower);
+    const mentionsSteps = /\b(step|first|second|then|return|cross)\b/.test(outputLower);
+    return clamp(
+      (mentionsTimes ? 0.35 : 0) +
+      (mentionsFlashlight ? 0.15 : 0) +
+      (mentionsAnswer ? 0.35 : 0) +
+      (mentionsSteps ? 0.15 : 0)
+    );
+  }
+
+  return scoreTokenGrounding(output, input);
+}
+
 function scoreChecks(text: string, checks: BonusCheck[]): number {
   const normalized = text.trim();
   if (!normalized) return 0;
@@ -74,15 +282,6 @@ function scoreChecks(text: string, checks: BonusCheck[]): number {
   }
 
   return checks.length === 0 ? 1 : matched / checks.length;
-}
-
-function countNamedSections(text: string, sections: string[]): number {
-  const normalized = text.toLowerCase();
-  return sections.filter((s) => normalized.includes(s.toLowerCase())).length;
-}
-
-function scoreNamedSections(text: string, sections: string[]): number {
-  return sections.length === 0 ? 1 : countNamedSections(text, sections) / sections.length;
 }
 
 async function getOrComputeCached<T>(
@@ -128,37 +327,6 @@ function scoreBaselineGate(
   };
 }
 
-const PROMPT_CONSTRAINT_WORDS =
-  /\b(must|should|only|exactly|format|structure|include|exclude|limit|max|minimum|step|json|xml|list|table|brief|detailed|concise)\b/i;
-const PROMPT_ACTION_WORDS =
-  /\b(explain|describe|write|analyze|summarize|list|compare|generate|extract|identify|classify|convert|translate|create|output)\b/i;
-
-function scorePrompt(prompt: string): number {
-  const words = prompt.trim().split(/\s+/).filter(Boolean);
-  const len = words.length;
-  if (len === 0) return 0;
-
-  let score = 0;
-  if (len >= 5 && len <= 60) score += 0.4;
-  else if (len > 0 && len < 5) score += 0.1;
-  else score += 0.2;
-
-  if (PROMPT_CONSTRAINT_WORDS.test(prompt)) score += 0.3;
-  if (PROMPT_ACTION_WORDS.test(prompt)) score += 0.3;
-
-  return Math.min(1, score);
-}
-
-const ANALOGY_MARKERS =
-  /\b(like|similar to|just as|think of|imagine|as if|metaphor|analogy|resembles|compared to|in the same way|picture|envision)\b/i;
-
-function scoreAnalogy(output: string): number {
-  const words = output.trim().split(/\s+/).filter(Boolean).length;
-  if (words < 10) return 0.1;
-  const lengthBonus = Math.min(0.3, words / 80);
-  return ANALOGY_MARKERS.test(output) ? 0.7 + lengthBonus : 0.1 + lengthBonus;
-}
-
 const REASONING_CONNECTORS =
   /\b(because|therefore|thus|hence|since|given that|as a result|consequently|first|second|third|finally|in conclusion|step \d)\b/i;
 
@@ -193,6 +361,8 @@ PROMPT score (0–1):
 • +0.40 based on how many required sections are explicitly named in the prompt (named/total × 0.40)
 • +0.20 if the prompt specifies the word or length constraint
 • +0.15 if the prompt uses clear action language (summarize, extract, identify, list...)
+• +0.15 if the prompt uses negative prompting to stay grounded in the provided input and avoid inventing details
+• +0.15 if the prompt explicitly says not to hallucinate or add extra information
 
 OUTPUT score (0–1):
 • +0.40 if all required sections appear in the output, clearly labeled
@@ -288,7 +458,14 @@ async function scoreCombined(
     expectedOutput?: string;
   }
 ): Promise<CombinedScores> {
-  const key = cacheKey("combined", userPrompt, output, context?.roundType ?? "");
+  const key = cacheKey(
+    "combined",
+    userPrompt,
+    output,
+    context?.roundType ?? "",
+    JSON.stringify(context?.constraints ?? null),
+    context?.expectedOutput ?? ""
+  );
   const cached = cacheGet<CombinedScores>(key);
   if (cached) return cached;
 
@@ -333,13 +510,10 @@ Score each from 0 to 1.`;
     };
     cacheSet(key, scores);
     return scores;
-  } catch {
-    // Fallback to heuristics on LLM timeout or parse error
-    return {
-      quality: 0.5,
-      analogy: scoreAnalogy(output),
-      prompt: scorePrompt(userPrompt),
-    };
+  } catch (error) {
+    throw new Error(
+      `Combined scoring failed: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -381,8 +555,7 @@ function checkConstraints(
   }
   if (c.requiredSections?.length) {
     total++;
-    const normalizedOutput = output.toLowerCase();
-    if (c.requiredSections.every((s) => normalizedOutput.includes(s.toLowerCase()))) score++;
+    if (scoreRequiredSections(output, c.requiredSections) >= 1) score++;
   }
   if (c.requireSteps) {
     total++;
@@ -418,12 +591,12 @@ function scorePromptConstraintCoverage(constraints: unknown, prompt: string): nu
   const c = constraints as ObjectConstraints;
   let score = 0;
   let total = 0;
-  const promptLower = prompt.toLowerCase();
+  const promptNormalized = normalizeForMatch(prompt);
 
   if (c.requiredSections?.length) {
     total++;
     const mentioned = c.requiredSections.filter((s) =>
-      promptLower.includes(s.toLowerCase())
+      promptNormalized.includes(normalizeForMatch(s))
     ).length;
     score += mentioned / c.requiredSections.length;
   }
@@ -446,7 +619,33 @@ function scorePromptConstraintCoverage(constraints: unknown, prompt: string): nu
     }
   }
 
+  // Negative prompting: explicitly tell the model what not to do.
+  // This matters for summarize/extract-style tasks where the prompt should
+  // prevent invention, hallucination, or unsupported additions.
+  if (c.requiredSections?.length || c.maxWords != null) {
+    total++;
+    if (hasNegativePrompting(prompt)) {
+      score += 1;
+    }
+
+    total++;
+    if (hasGroundingInstruction(prompt)) {
+      score += 1;
+    }
+  }
+
   return total === 0 ? 1 : score / total;
+}
+
+export function hasNegativePrompting(prompt: string): boolean {
+  return (
+    /\b(do not|don't|avoid|only|solely|strictly|limit(?:\s+your)?\s+response)\b/i.test(prompt) &&
+    /\b(input data|provided input|source text|source material|given text|original text|information provided|do not add|don't add|no extra information|without adding|don't invent|do not invent|no outside information|use only|based only on|ground(?:ed)? in)\b/i.test(prompt)
+  );
+}
+
+export function hasGroundingInstruction(prompt: string): boolean {
+  return /\b(no hallucination|no hallucinations|don't hallucinate|do not hallucinate|no extra information|no extra info|use only the input data|use only the provided input|based only on the input|ground(?:ed)? in the input|stay grounded in the input|only use the input data)\b/i.test(prompt);
 }
 
 // ── Structure heuristics ──────────────────────────────────────────────────────
@@ -455,28 +654,6 @@ function getBrevityScore(prompt: string): number {
   const words = prompt.trim().split(/\s+/).filter(Boolean).length;
   if (words > 15) return 0;
   return 1 - (words / 15) * 0.5;
-}
-
-function evaluateConstraints(output: string): number {
-  let score = 0;
-  let total = 0;
-
-  total++;
-  const wordCount = output.split(/\s+/).filter(Boolean).length;
-  if (wordCount > 0 && wordCount <= 500) score++;
-
-  total++;
-  if (
-    /[-*]\s+/.test(output) ||
-    /\b\d+\./.test(output) ||
-    /^#{1,6}\s+/m.test(output)
-  )
-    score++;
-
-  total++;
-  if (wordCount >= 20) score++;
-
-  return total === 0 ? 1 : score / total;
 }
 
 function evaluateStructure(output: string): number {
@@ -610,18 +787,27 @@ async function scoreImproveOutcome(
   );
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const requiredSectionsScore =
+    isPlainObject(round.constraints) && Array.isArray((round.constraints as ObjectConstraints).requiredSections)
+      ? scoreRequiredSections(output, (round.constraints as ObjectConstraints).requiredSections ?? [])
+      : 1;
+  const groundingScore = scoreTokenGrounding(output, round.input ?? round.expectedOutput ?? "");
   const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
   const similarityScore = round.expectedOutput
     ? await getSimilarity(output, round.expectedOutput)
     : 1;
   const taskOutputScore =
-    0.45 * qualityScore +
-    0.3 * similarityScore +
-    0.25 * constraintScore;
+    0.35 * qualityScore +
+    0.25 * similarityScore +
+    0.20 * constraintScore +
+    0.10 * requiredSectionsScore +
+    0.10 * groundingScore;
 
   return {
     qualityScore,
     similarityScore,
+    requiredSectionsScore,
+    groundingScore,
     promptScore,
     constraintScore,
     taskOutputScore,
@@ -640,11 +826,21 @@ async function scoreReverseOutcome(
   ]);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const targetStructureScore = scoreRequiredSections(output, extractSectionLabels(target));
+  const groundingScore = scoreTokenGrounding(output, target);
   const promptScore = clamp(0.6 * rubric.prompt + 0.4 * constraintCoverage);
-  const taskOutputScore = clamp(0.6 * similarity + 0.25 * rubric.quality + 0.15 * constraintScore);
+  const taskOutputScore = clamp(
+    0.35 * similarity +
+    0.20 * rubric.quality +
+    0.15 * constraintScore +
+    0.15 * targetStructureScore +
+    0.15 * groundingScore
+  );
 
   return {
     similarity,
+    targetStructureScore,
+    groundingScore,
     promptScore,
     constraintScore,
     taskOutputScore,
@@ -663,15 +859,18 @@ async function scoreOptimizeOutcome(
     prompt: promptScore,
   } =
     await scoreCombined(prompt, output, { roundType: "OPTIMIZE" });
+  const groundingScore = scoreTokenGrounding(output, round.input ?? "");
   const taskOutputScore =
-    0.55 * qualityScore +
-    0.45 * analogyQualityScore;
+    0.40 * qualityScore +
+    0.30 * analogyQualityScore +
+    0.30 * groundingScore;
   const promptCraftScore = 0.6 * brevityScore + 0.4 * promptScore;
 
   return {
     brevityScore,
     qualityScore,
     analogyQualityScore,
+    groundingScore,
     promptScore,
     promptCraftScore,
     taskOutputScore,
@@ -687,18 +886,21 @@ async function scoreStructuredOutcome(
   const structureScore = evaluateStructure(output);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const concreteSolutionScore = scoreConcreteStructuredSolution(round.input ?? "", output);
   const rubric = await scoreCombined(prompt, output, { roundType: "STRUCTURED", constraints: round.constraints });
   const promptScore = clamp(0.6 * rubric.prompt + 0.4 * constraintCoverage);
   const taskOutputScore = clamp(
-    0.30 * reasoningScore +
-    0.25 * structureScore +
-    0.30 * rubric.quality +
-    0.15 * constraintScore
+    0.20 * reasoningScore +
+    0.15 * structureScore +
+    0.25 * rubric.quality +
+    0.20 * constraintScore +
+    0.20 * concreteSolutionScore
   );
 
   return {
     reasoningScore,
     structureScore,
+    concreteSolutionScore,
     promptScore,
     constraintScore,
     taskOutputScore,
@@ -964,23 +1166,23 @@ function normalizeCompiledPrompt(text: string): string {
 
 function scoreBonusPromptCoverage(prompt: string, config: BonusEvalConfig): number {
   return clamp(
-    0.65 * scoreChecks(prompt, config.promptChecks) +
-      0.35 * scoreNamedSections(prompt, config.requiredSections)
+    0.6 * scoreChecks(prompt, config.promptChecks) +
+      0.4 * scoreSectionMentions(prompt, config.requiredSections)
   );
 }
 
 function scoreBonusOutputCoverage(output: string, config: BonusEvalConfig): number {
   return clamp(
-    0.45 * scoreNamedSections(output, config.requiredSections) +
+    0.5 * scoreRequiredSections(output, config.requiredSections) +
       0.35 * scoreChecks(output, config.outputFactChecks) +
-      0.2 * scoreChecks(output, config.structureChecks)
+      0.15 * scoreChecks(output, config.structureChecks)
   );
 }
 
 function scoreBonusOutputStructure(output: string, config: BonusEvalConfig): number {
   return clamp(
-    0.5 * scoreChecks(output, config.structureChecks) +
-      0.5 * evaluateStructure(output)
+    0.6 * scoreChecks(output, config.structureChecks) +
+      0.4 * evaluateStructure(output)
   );
 }
 
@@ -1058,11 +1260,11 @@ export async function evaluateMetaBonusRound({
     );
 
     const finalScore =
-      0.40 * metaCoverageScore +
-      0.30 * compiledPromptCoverageScore +
-      0.10 * outputScores.outputCoverageScore +
-      0.07 * outputScores.outputStructureScore +
-      0.03 * outputScores.similarityScore +
+      0.25 * metaCoverageScore +
+      0.20 * compiledPromptCoverageScore +
+      0.20 * outputScores.outputCoverageScore +
+      0.10 * outputScores.outputStructureScore +
+      0.15 * outputScores.similarityScore +
       0.10 * baselineGate.baselineGateScore;
 
     return {
@@ -1085,7 +1287,7 @@ export async function evaluateMetaBonusRound({
     };
   } catch (err) {
     console.error("Meta Bonus Evaluation Error:", err);
-    return { finalScore: 0, progress: 0, error: "Evaluation failed" };
+    throw new Error("Evaluation failed");
   }
 }
 
