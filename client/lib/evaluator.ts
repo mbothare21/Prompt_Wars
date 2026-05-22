@@ -19,6 +19,9 @@ const LLM_TIMEOUT_MS = getTimeoutMs(
 
 type ObjectConstraints = {
   maxWords?: number;
+  minWords?: number;
+  maxPromptWords?: number;
+  minOutputWords?: number;
   requiredSections?: string[];
   requireSteps?: boolean;
   mustInclude?: string[];
@@ -62,6 +65,10 @@ async function callLLM<T>(promise: Promise<T>, ms = LLM_TIMEOUT_MS): Promise<T> 
 
 function clamp(n: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function normalizeForMatch(text: string): string {
@@ -377,7 +384,7 @@ Return JSON only — no markdown, no explanation:
 function buildOptimizeRubric(): string {
   return `You are a scoring engine for a prompt-engineering game.
 
-The player's task: write a concise prompt (ideally ≤15 words) that makes an AI explain a technical concept using a clear analogy or comparison.
+The player's task: write a concise prompt (ideally ≤15 words) that makes an AI explain any concept using a clear analogy or comparison, and produce an output of at least 50 words.
 
 Score using these explicit criteria.
 
@@ -388,6 +395,7 @@ PROMPT score (0–1):
 • +0.15 if the prompt gives useful scope (audience, format, or style)
 
 OUTPUT quality score (0–1):
+• +0.20 if the output is at least 50 words
 • +0.35 if the output uses a concrete analogy or comparison
 • +0.30 based on how easy the explanation is to understand for a non-expert
 • +0.20 if the analogy is accurate and relevant to the concept
@@ -447,6 +455,42 @@ OUTPUT score (0–1):
 
 Return JSON only — no markdown, no explanation:
 {"quality": <output_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
+}
+
+function fallbackCombinedScores(
+  userPrompt: string,
+  output: string,
+  context?: {
+    roundType: "IMPROVE" | "OPTIMIZE" | "REVERSE" | "STRUCTURED";
+    constraints?: unknown;
+    expectedOutput?: string;
+  }
+): CombinedScores {
+  const promptStructureSignal = /\b(step|steps|section|sections|heading|headings|bullet|bullets|numbered|structured|format|summary)\b/i.test(userPrompt)
+    ? 1
+    : 0;
+  const promptScore = clamp(
+    0.45 * scorePromptConstraintCoverage(context?.constraints, userPrompt) +
+    0.25 * promptStructureSignal +
+    0.30 * scoreReasoning(userPrompt)
+  );
+
+  const similarityBasis = context?.expectedOutput ?? userPrompt;
+  const outputGrounding = scoreTokenGrounding(output, similarityBasis);
+  const outputScore = clamp(
+    0.35 * scoreReasoning(output) +
+    0.25 * evaluateStructure(output) +
+    0.25 * outputGrounding +
+    0.15 * (context?.constraints ? checkConstraints(context.constraints, userPrompt, output) : 1)
+  );
+
+  return {
+    quality: outputScore,
+    analogy: context?.roundType === "OPTIMIZE"
+      ? clamp(0.5 * scoreReasoning(output) + 0.5 * evaluateStructure(output))
+      : 0,
+    prompt: promptScore,
+  };
 }
 
 async function scoreCombined(
@@ -511,9 +555,11 @@ Score each from 0 to 1.`;
     cacheSet(key, scores);
     return scores;
   } catch (error) {
-    throw new Error(
-      `Combined scoring failed: ${error instanceof Error ? error.message : String(error)}`
-    );
+    console.error("[evaluator] combined scorer fallback used", {
+      roundType: context?.roundType ?? "DEFAULT",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallbackCombinedScores(userPrompt, output, context);
   }
 }
 
@@ -551,7 +597,19 @@ function checkConstraints(
 
   if (c.maxWords != null) {
     total++;
-    if (output.split(/\s+/).filter(Boolean).length <= c.maxWords) score++;
+    if (countWords(output) <= c.maxWords) score++;
+  }
+  if (c.minWords != null) {
+    total++;
+    if (countWords(output) >= c.minWords) score++;
+  }
+  if (c.maxPromptWords != null) {
+    total++;
+    if (countWords(output) <= c.maxPromptWords) score++;
+  }
+  if (c.minOutputWords != null) {
+    total++;
+    if (countWords(output) >= c.minOutputWords) score++;
   }
   if (c.requiredSections?.length) {
     total++;
@@ -692,16 +750,47 @@ async function runPromptWithContext(
   return completion.choices[0].message.content || "";
 }
 
+async function runPromptWithContextWithRetry(
+  prompt: string,
+  input?: string,
+  inputLabel = "Input"
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await runPromptWithContext(prompt, input, inputLabel);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  console.error("[evaluator] prompt execution fallback used", {
+    inputLabel,
+    error: lastError instanceof Error ? lastError.message : String(lastError),
+  });
+  return "";
+}
+
 // ── Per-round evaluators ──────────────────────────────────────────────────────
 
 async function evaluateOptimizeRound(round: Round, userPrompt: string) {
-  const brevityScore = getBrevityScore(userPrompt);
-  if (brevityScore === 0) {
-    return { finalScore: 0, progress: 0, reason: "Prompt exceeds 15 words" };
+  const constraints = isPlainObject(round.constraints)
+    ? (round.constraints as ObjectConstraints)
+    : {};
+  const maxPromptWords = constraints.maxPromptWords ?? constraints.maxWords ?? 15;
+  const minOutputWords = constraints.minOutputWords ?? constraints.minWords ?? 50;
+  const promptWordCount = countWords(userPrompt);
+
+  if (promptWordCount > maxPromptWords) {
+    return {
+      finalScore: 0,
+      progress: 0,
+      reason: `Prompt exceeds ${maxPromptWords} words`,
+    };
   }
 
   const [output, baseline] = await Promise.all([
-    runPromptWithContext(userPrompt, round.input, "Task"),
+    runPromptWithContextWithRetry(userPrompt, round.input, "Task"),
     getOptimizeBaseline(round),
   ]);
   const scored = await scoreOptimizeOutcome(
@@ -709,6 +798,17 @@ async function evaluateOptimizeRound(round: Round, userPrompt: string) {
     userPrompt,
     output
   );
+  const outputWordCount = countWords(output);
+  if (outputWordCount < minOutputWords) {
+    return {
+      output,
+      ...scored,
+      ...baseline,
+      finalScore: 0,
+      progress: 0,
+      reason: `Output under ${minOutputWords} words`,
+    };
+  }
   const baselineGate = scoreBaselineGate(
     scored.taskOutputScore,
     baseline.baselineScore,
@@ -767,7 +867,7 @@ function getReverseBaselinePrompt(round: Round): string {
 }
 
 function getOptimizeBaselinePrompt(round: Round): string {
-  return round.input?.trim() || "Explain this simply using an analogy.";
+  return round.input?.trim() || "Explain a concept using a simple analogy in at least 50 words.";
 }
 
 function getStructuredBaselinePrompt(): string {
@@ -935,7 +1035,7 @@ async function getImproveBaseline(round: Round) {
       round.expectedOutput ?? ""
     ),
     async () => {
-      const baselineOutput = await runPromptWithContext(
+      const baselineOutput = await runPromptWithContextWithRetry(
         baselinePrompt,
         round.input,
         "Source Text"
@@ -964,7 +1064,7 @@ async function getReverseBaseline(round: Round) {
       round.expectedOutput ?? ""
     ),
     async () => {
-      const baselineOutput = await runPromptWithContext(baselinePrompt);
+      const baselineOutput = await runPromptWithContextWithRetry(baselinePrompt);
       const scored = await scoreReverseOutcome(
         round,
         baselinePrompt,
@@ -990,7 +1090,7 @@ async function getOptimizeBaseline(round: Round) {
       round.expectedOutput ?? ""
     ),
     async () => {
-      const baselineOutput = await runPromptWithContext(
+      const baselineOutput = await runPromptWithContextWithRetry(
         baselinePrompt,
         round.input,
         "Task"
@@ -1020,7 +1120,7 @@ async function getStructuredBaseline(round: Round) {
       round.expectedOutput ?? ""
     ),
     async () => {
-      const baselineOutput = await runPromptWithContext(
+      const baselineOutput = await runPromptWithContextWithRetry(
         baselinePrompt,
         round.input,
         "Problem"
@@ -1047,7 +1147,7 @@ async function getBonusBaseline(basePrompt: string, config: BonusEvalConfig) {
         metaPrompt: config.baselineMetaPrompt,
         basePrompt,
       });
-      const baselineOutput = await runPromptWithContext(
+      const baselineOutput = await runPromptWithContextWithRetry(
         baselineCompiledPrompt,
         basePrompt,
         "Scenario"
@@ -1065,7 +1165,7 @@ async function getBonusBaseline(basePrompt: string, config: BonusEvalConfig) {
 
 async function evaluateImproveRound(round: Round, userPrompt: string) {
   const [output, baseline] = await Promise.all([
-    runPromptWithContext(userPrompt, round.input, "Source Text"),
+    runPromptWithContextWithRetry(userPrompt, round.input, "Source Text"),
     getImproveBaseline(round),
   ]);
   const scored = await scoreImproveOutcome(
@@ -1095,7 +1195,7 @@ async function evaluateImproveRound(round: Round, userPrompt: string) {
 
 async function evaluateReverseRound(round: Round, userPrompt: string) {
   const [output, baseline] = await Promise.all([
-    runPromptWithContext(userPrompt),
+    runPromptWithContextWithRetry(userPrompt),
     getReverseBaseline(round),
   ]);
   const scored = await scoreReverseOutcome(
@@ -1126,7 +1226,7 @@ async function evaluateReverseRound(round: Round, userPrompt: string) {
 
 async function evaluateStructuredRound(round: Round, userPrompt: string) {
   const [output, baseline] = await Promise.all([
-    runPromptWithContext(userPrompt, round.input, "Problem"),
+    runPromptWithContextWithRetry(userPrompt, round.input, "Problem"),
     getStructuredBaseline(round),
   ]);
   const scored = await scoreStructuredOutcome(
@@ -1248,7 +1348,7 @@ export async function evaluateMetaBonusRound({
     }
 
     const compiledPrompt = await compileMetaPrompt({ metaPrompt, basePrompt });
-    const finalOutput = await runPromptWithContext(compiledPrompt, basePrompt, "Scenario");
+    const finalOutput = await runPromptWithContextWithRetry(compiledPrompt, basePrompt, "Scenario");
     const metaCoverageScore = scoreBonusPromptCoverage(metaPrompt, evalConfig);
     const compiledPromptCoverageScore = scoreBonusPromptCoverage(compiledPrompt, evalConfig);
     const outputScores = await scoreBonusOutput(finalOutput, evalConfig);

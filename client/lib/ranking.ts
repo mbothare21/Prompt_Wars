@@ -43,6 +43,7 @@ export function getAccuracyTimeCompositeScore(
 }
 
 type CompetitiveStandingInput = {
+  roundsPassed: number;
   roundsPlayed: number;
   averageScore: number;
   timeTakenMs: number;
@@ -54,6 +55,7 @@ export function compareCompetitiveStanding(
   a: CompetitiveStandingInput,
   b: CompetitiveStandingInput
 ) {
+  if (b.roundsPassed !== a.roundsPassed) return b.roundsPassed - a.roundsPassed;
   if (b.roundsPlayed !== a.roundsPlayed) return b.roundsPlayed - a.roundsPlayed;
 
   const performanceA = getAccuracyTimeCompositeScore(
@@ -93,7 +95,12 @@ function preprocess(players: Player[]): ProcessedPlayer[] {
         ? Math.max(0, completedAt - startedAt)
         : fallbackTime;
 
-    return { ...p, _totalAttempts: totalAttempts, _timeTakenMs: timeTakenMs };
+    return {
+      ...p,
+      roundsPassed: p.roundsPassed ?? p.roundsPlayed,
+      _totalAttempts: totalAttempts,
+      _timeTakenMs: timeTakenMs,
+    };
   });
 }
 
@@ -102,17 +109,19 @@ export function rankPlayers(players: Player[]): Player[] {
 
   processed.sort((a, b) => {
     return compareCompetitiveStanding(
-      {
-        roundsPlayed: a.roundsPlayed,
-        averageScore: a.averageScore || 0,
-        timeTakenMs: a._timeTakenMs,
+        {
+          roundsPassed: a.roundsPassed ?? a.roundsPlayed,
+          roundsPlayed: a.roundsPlayed,
+          averageScore: a.averageScore || 0,
+          timeTakenMs: a._timeTakenMs,
         attempts: a._totalAttempts,
         name: a.name,
       },
-      {
-        roundsPlayed: b.roundsPlayed,
-        averageScore: b.averageScore || 0,
-        timeTakenMs: b._timeTakenMs,
+        {
+          roundsPassed: b.roundsPassed ?? b.roundsPlayed,
+          roundsPlayed: b.roundsPlayed,
+          averageScore: b.averageScore || 0,
+          timeTakenMs: b._timeTakenMs,
         attempts: b._totalAttempts,
         name: b.name,
       }

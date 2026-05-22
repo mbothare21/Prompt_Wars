@@ -54,6 +54,7 @@ async function upsertPlayerSnapshot(
       $set: {
         name: session.player.name,
         roundsPlayed: session.player.roundsPlayed,
+        roundsPassed: session.player.roundsPassed ?? session.player.roundsPlayed,
         timeTaken: Math.max(0, Date.now() - session.startTime),
         avgAccuracy: session.player.averageScore,
         attemptsTaken: getTotalAttempts(session),

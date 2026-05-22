@@ -778,10 +778,10 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
             return {
                 roundNumber: 4,
                 type: "OPTIMIZE",
-                instruction: "Write the SHORTEST prompt (≤15 words) that still makes the AI explain any concept clearly using an analogy.",
+                instruction: "Choose any concept and any analogy. Write a prompt of 15 words or fewer that makes the AI explain that concept using that analogy in at least 50 words.",
                 input: "Explain any concept in simple terms using an analogy.",
                 referenceExample: `Example only: if the concept were AI, you could say "AI is like a cricket batter who has faced thousands of balls, learned the patterns, and uses that experience to decide the next shot.`,
-                constraints: { maxWords: 15, minWords: 50 },
+                constraints: { maxPromptWords: 15, minOutputWords: 50 },
             };
         case 5: {
             const s = ROUND_5_SETS[setIndex % ROUND_5_SETS.length];
@@ -797,7 +797,7 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
             return {
                 roundNumber: 6,
                 type: "BONUS",
-                instruction: "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a far more detailed, constraint-aware final prompt. The hidden constraints are NOT listed — your job is to think of as many of them as possible so the compiled prompt produces the strongest output.",
+                instruction: "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a final prompt whose job is to produce that kind of answer from the scenario. State clearly what the generated prompt should make the AI do and what the final answer should look like.",
                 ...s,
             };
         }
@@ -839,12 +839,12 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 4,
             type: "OPTIMIZE",
             instruction:
-                "Write the SHORTEST prompt (≤15 words) that still makes the AI explain any concept clearly using an analogy.",
+                "Choose any concept and any analogy. Write a prompt of 15 words or fewer that makes the AI explain that concept using that analogy in at least 50 words.",
             input:
                 "Explain any concept in simple terms using an analogy.",
             referenceExample:
                 "Example only: if the concept were AI, you could say \"AI is like a cricket batter who has faced thousands of balls, learned the patterns, and uses that experience to decide the next shot.",
-            constraints: { maxWords: 15, minWords: 50 },
+            constraints: { maxPromptWords: 15, minOutputWords: 50 },
         },
 
         // ── Round 5: STRUCTURED ────────────────────────────────────────
@@ -861,7 +861,7 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 6,
             type: "BONUS",
             instruction:
-                "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a far more detailed, constraint-aware final prompt. The hidden constraints are NOT listed — your job is to think of as many of them as possible so the compiled prompt produces the strongest output.",
+                "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a final prompt whose job is to produce that kind of answer from the scenario. State clearly what the generated prompt should make the AI do and what the final answer should look like.",
             ...pick(sessionId, 6, ROUND_6_SETS),
         }
     ];

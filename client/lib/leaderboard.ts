@@ -23,6 +23,7 @@ type DbLeaderboardPlayer = {
   name?: string;
   email?: string;
   location?: string;
+  roundsPassed?: number;
   roundsPlayed?: number;
   timeTaken?: number;
   avgAccuracy?: number;
@@ -54,6 +55,7 @@ function normalizeDbPlayer(player: DbLeaderboardPlayer): Player {
     location: player.location,
     startedAt,
     completedAt,
+    roundsPassed: player.roundsPassed ?? player.roundsPlayed ?? 0,
     roundsPlayed: player.roundsPlayed ?? 0,
     totalScore: 0,
     averageScore: player.avgAccuracy ?? 0,
@@ -71,6 +73,7 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
       name: 1,
       email: 1,
       location: 1,
+      roundsPassed: 1,
       roundsPlayed: 1,
       timeTaken: 1,
       avgAccuracy: 1,
@@ -79,7 +82,7 @@ async function fetchLeaderboardFromDb(now: number): Promise<Player[]> {
       createdAt: 1,
       completedAt: 1,
     })
-    .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
+    .sort({ roundsPassed: -1, roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
     .limit(500)
     .lean();
 

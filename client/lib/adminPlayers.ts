@@ -16,6 +16,7 @@ export type RawAdminPlayerDoc = {
   name?: unknown;
   email?: unknown;
   location?: unknown;
+  roundsPassed?: unknown;
   roundsPlayed?: unknown;
   timeTaken?: unknown;
   avgAccuracy?: unknown;
@@ -31,6 +32,7 @@ export type AdminPlayerSummary = {
   name: string;
   email?: string;
   location?: string;
+  roundsPassed: number;
   roundsPlayed: number;
   timeTakenSec: number;
   averageScore: number;
@@ -44,6 +46,7 @@ export type AdminPlayerExport = {
   name: string;
   email?: string;
   location?: string;
+  roundsPassed: number;
   roundsPlayed: number;
   timeTaken: number;
   avgAccuracy: number;
@@ -59,6 +62,7 @@ type NormalizedAdminPlayer = {
   name: string;
   email?: string;
   location?: string;
+  roundsPassed: number;
   roundsPlayed: number;
   timeTaken: number;
   avgAccuracy: number;
@@ -191,6 +195,7 @@ function normalizeAdminPlayer(
     name,
     email,
     location: toOptionalString(doc.location),
+    roundsPassed: Math.max(0, toFiniteNumber(doc.roundsPassed, toFiniteNumber(doc.roundsPlayed))),
     roundsPlayed: Math.max(0, toFiniteNumber(doc.roundsPlayed)),
     timeTaken: Math.max(0, toFiniteNumber(doc.timeTaken)),
     avgAccuracy: toFiniteNumber(doc.avgAccuracy),
@@ -244,6 +249,7 @@ function normalizeStoredPlayer(player: Player, index: number): NormalizedAdminPl
     ),
     name,
     email,
+    roundsPassed: Math.max(0, toFiniteNumber(player.roundsPassed, toFiniteNumber(player.roundsPlayed))),
     roundsPlayed: Math.max(0, toFiniteNumber(player.roundsPlayed)),
     timeTaken:
       typeof player.completedAt === "number" && player.completedAt > 0
@@ -264,6 +270,7 @@ function toAdminPlayerSummaryShape(player: NormalizedAdminPlayer): AdminPlayerSu
     name: player.name,
     email: player.email,
     location: player.location,
+    roundsPassed: player.roundsPassed,
     roundsPlayed: player.roundsPlayed,
     timeTakenSec: Math.round(
       player.timeTaken > 10_000 ? player.timeTaken / 1000 : player.timeTaken
@@ -281,6 +288,7 @@ function toAdminPlayerExportShape(player: NormalizedAdminPlayer): AdminPlayerExp
     name: player.name,
     email: player.email,
     location: player.location,
+    roundsPassed: player.roundsPassed,
     roundsPlayed: player.roundsPlayed,
     timeTaken: player.timeTaken,
     avgAccuracy: player.avgAccuracy,
@@ -294,6 +302,7 @@ function toAdminPlayerExportShape(player: NormalizedAdminPlayer): AdminPlayerExp
 
 export function sortAdminPlayers<
   T extends {
+    roundsPassed: number;
     roundsPlayed: number;
     avgAccuracy: number;
     timeTaken: number;
@@ -304,6 +313,7 @@ export function sortAdminPlayers<
   return players.sort((a, b) =>
     compareCompetitiveStanding(
       {
+        roundsPassed: a.roundsPassed,
         roundsPlayed: a.roundsPlayed,
         averageScore: a.avgAccuracy,
         timeTakenMs: a.timeTaken,
@@ -311,6 +321,7 @@ export function sortAdminPlayers<
         name: a.name,
       },
       {
+        roundsPassed: b.roundsPassed,
         roundsPlayed: b.roundsPlayed,
         averageScore: b.avgAccuracy,
         timeTakenMs: b.timeTaken,

@@ -138,6 +138,7 @@ export async function POST(req: Request) {
       name,
       ...(email !== undefined ? { email } : {}),
       startedAt: Date.now(),
+      roundsPassed: 0,
       roundsPlayed: 0,
       totalScore: 0,
       averageScore: 0,

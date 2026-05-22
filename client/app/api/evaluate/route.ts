@@ -47,6 +47,7 @@ function derivePlayerMetrics(rounds: PendingRoundRecord[] | undefined) {
   }
 
   const roundsPlayed = bestScoreByRound.size;
+  const roundsPassed = Array.from(bestScoreByRound.values()).filter((score) => score > 0).length;
   const totalScore = Array.from(bestScoreByRound.values()).reduce(
     (sum, score) => sum + score,
     0
@@ -55,6 +56,7 @@ function derivePlayerMetrics(rounds: PendingRoundRecord[] | undefined) {
 
   return {
     roundsPlayed,
+    roundsPassed,
     totalScore,
     averageScore,
   };
@@ -163,6 +165,7 @@ export async function POST(req: Request) {
       if (session.currentRound > MAIN_ROUNDS) session.bonusUnlocked = true;
       const metrics = derivePlayerMetrics(session.pendingRounds);
       session.player.roundsPlayed = metrics.roundsPlayed;
+      session.player.roundsPassed = metrics.roundsPassed;
       session.player.totalScore = metrics.totalScore;
       session.player.averageScore = metrics.averageScore;
       await updateSession(sessionId, session);
@@ -181,6 +184,21 @@ export async function POST(req: Request) {
     }
 
     // Bonus round: end game as completed
+    session.pendingRounds = [
+      ...(session.pendingRounds ?? []).filter((r) => r.round !== roundNum),
+      {
+        round: roundNum,
+        attempts: session.attemptsPerRound[roundNum],
+        score: 0,
+        prompt: round.type === "CLASSIFY" ? answers : prompt,
+        output: "",
+      },
+    ];
+    const metrics = derivePlayerMetrics(session.pendingRounds);
+    session.player.roundsPlayed = metrics.roundsPlayed;
+    session.player.roundsPassed = metrics.roundsPassed;
+    session.player.totalScore = metrics.totalScore;
+    session.player.averageScore = metrics.averageScore;
     session.status = "COMPLETED";
     session.completed = true;
     session.player.completed = true;
@@ -293,6 +311,7 @@ export async function POST(req: Request) {
 
   const metrics = derivePlayerMetrics(session.pendingRounds);
   session.player.roundsPlayed = metrics.roundsPlayed;
+  session.player.roundsPassed = metrics.roundsPassed;
   session.player.totalScore = metrics.totalScore;
   session.player.averageScore = metrics.averageScore;
 
@@ -384,6 +403,7 @@ export async function POST(req: Request) {
       if (session.currentRound > MAIN_ROUNDS) session.bonusUnlocked = true;
       const metrics = derivePlayerMetrics(session.pendingRounds);
       session.player.roundsPlayed = metrics.roundsPlayed;
+      session.player.roundsPassed = metrics.roundsPassed;
       session.player.totalScore = metrics.totalScore;
       session.player.averageScore = metrics.averageScore;
       await updateSession(sessionId, session);
@@ -403,6 +423,21 @@ export async function POST(req: Request) {
     }
 
     // Bonus round: end game as completed
+    session.pendingRounds = [
+      ...(session.pendingRounds ?? []).filter((r) => r.round !== roundNum),
+      {
+        round: roundNum,
+        attempts: session.attemptsPerRound[roundNum],
+        score: 0,
+        prompt: round.type === "CLASSIFY" ? answers : prompt,
+        output: ("output" in result ? result.output : undefined) ?? ("finalOutput" in result ? result.finalOutput : undefined) ?? "",
+      },
+    ];
+    const metrics = derivePlayerMetrics(session.pendingRounds);
+    session.player.roundsPlayed = metrics.roundsPlayed;
+    session.player.roundsPassed = metrics.roundsPassed;
+    session.player.totalScore = metrics.totalScore;
+    session.player.averageScore = metrics.averageScore;
     session.status = "COMPLETED";
     session.completed = true;
     session.player.completed = true;

@@ -72,6 +72,7 @@ type AdminPlayer = {
   name: string;
   email?: string;
   location?: string;
+  roundsPassed: number;
   roundsPlayed: number;
   timeTakenSec: number;
   averageScore: number;
@@ -118,6 +119,8 @@ const GAME_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 type ConstraintsObj = {
   maxWords?: number;
   minWords?: number;
+  maxPromptWords?: number;
+  minOutputWords?: number;
   requiredSections?: string[];
   requireSteps?: boolean;
   mustInclude?: string[];
@@ -131,6 +134,8 @@ function formatConstraints(constraints: unknown): string[] {
   const c = constraints as ConstraintsObj;
   const parts: string[] = [];
 
+  if (typeof c.maxPromptWords === "number") parts.push(`Max Prompt Words: ${c.maxPromptWords}`);
+  if (typeof c.minOutputWords === "number") parts.push(`Min Output Words: ${c.minOutputWords}`);
   if (typeof c.maxWords === "number") parts.push(`Max Output Words: ${c.maxWords}`);
   if (typeof c.minWords === "number") parts.push(`Min Response Words: ${c.minWords}`);
   if (Array.isArray(c.requiredSections)) {
@@ -155,11 +160,15 @@ function formatConstraints(constraints: unknown): string[] {
   return parts;
 }
 
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
 const OPTIMIZE_GUIDANCE = [
-  "There is no single required analogy or sample answer for this round.",
-  "You can choose any concept. The reference analogy only shows the style of explanation.",
-  "Your score comes from brevity plus whether the prompt still produces a clear, simple analogy.",
-  "Optimize for effectiveness, not for copying a specific example.",
+  "Choose any concept and any analogy; the topic itself is not being scored.",
+  "Your prompt must stay at 15 words or fewer.",
+  "The AI output must be at least 50 words.",
+  "Optimize for clarity and control, not for copying a sample answer.",
 ];
 
 export default function GameUI() {
@@ -180,6 +189,7 @@ export default function GameUI() {
     return [...adminPlayers].sort((a, b) => {
       return compareCompetitiveStanding(
         {
+          roundsPassed: a.roundsPassed ?? a.roundsPlayed,
           roundsPlayed: a.roundsPlayed,
           averageScore: a.averageScore,
           timeTakenMs: a.timeTakenSec * 1000,
@@ -187,6 +197,7 @@ export default function GameUI() {
           name: a.name,
         },
         {
+          roundsPassed: b.roundsPassed ?? b.roundsPlayed,
           roundsPlayed: b.roundsPlayed,
           averageScore: b.averageScore,
           timeTakenMs: b.timeTakenSec * 1000,
@@ -245,6 +256,7 @@ export default function GameUI() {
 
   const [stats, setStats] = useState({
     roundsCompleted: 0,
+    roundsPassed: 0,
     accuracies: [] as number[],
     attemptsPerRound: {} as Record<number, number>,
     terminalStatus: null as string | null,
@@ -260,6 +272,7 @@ export default function GameUI() {
     name: string;
     email?: string;
     location?: string;
+    roundsPassed: number;
     roundsPlayed: number;
     startedAt: number;
     completedAt?: number;
@@ -422,7 +435,14 @@ export default function GameUI() {
         if (s.player) setPlayer(s.player);
         if (s.sessionId) setSessionId(s.sessionId);
         if (typeof s.roundNumber === "number") { roundNumberRef.current = s.roundNumber; setRoundNumber(s.roundNumber); }
-        if (s.stats) setStats(s.stats);
+        if (s.stats) {
+          const restoredStats = s.stats;
+          setStats((prev) => ({
+            ...prev,
+            ...restoredStats,
+            roundsPassed: restoredStats.roundsPassed ?? 0,
+          }));
+        }
         if (typeof s.violations === "number") setViolations(s.violations);
         if (typeof s.initialSessionSeconds === "number") {
           initialSessionSecondsRef.current = s.initialSessionSeconds;
@@ -597,6 +617,7 @@ export default function GameUI() {
           playerId: sessionId ?? `${player.email}-${startedAt}`,
           name: player.name || "You",
           email: player.email || undefined,
+          roundsPassed: stats.roundsPassed,
           roundsPlayed: stats.roundsCompleted,
           startedAt,
           completedAt,
@@ -1191,6 +1212,7 @@ export default function GameUI() {
             ...prev,
             accuracies: nextAccuracies,
             roundsCompleted: Math.max(prev.roundsCompleted, roundNumber),
+            roundsPassed: Math.max(prev.roundsPassed ?? 0, roundNumber),
             attemptsPerRound: { ...prev.attemptsPerRound, [roundNumber]: attThisRound },
             lastFinalScore: adjustedScore,
           };
@@ -1253,6 +1275,7 @@ export default function GameUI() {
         setStats((prev) => ({
           ...prev,
           roundsCompleted: Math.max(prev.roundsCompleted, TOTAL_ROUNDS),
+          roundsPassed: Math.max(prev.roundsPassed ?? 0, TOTAL_ROUNDS),
           bonusCompleted: Boolean(data.bonusUnlocked),
           highScoreBonus: Boolean(data.highScoreBonus),
           lastFinalScore: adjustedFinalScore,
@@ -1364,7 +1387,7 @@ export default function GameUI() {
       [ROUND_TYPE_NAMES.REVERSE]: "Work backwards from the expected output to identify the key prompt patterns.",
       [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — strip every redundant word or modifier.",
       [ROUND_TYPE_NAMES.STRUCTURED]: "Follow every format requirement exactly as specified — no extra sections.",
-      [ROUND_TYPE_NAMES.BONUS]: "Combine specificity, strict format, and constraints into one tight prompt.",
+      [ROUND_TYPE_NAMES.BONUS]: "State exactly what the generated prompt should make the AI do and what the final answer should look like.",
     };
 
     let roundsHtml = "";
@@ -1393,13 +1416,10 @@ export default function GameUI() {
     if (r1Entries.length > 0) {
       const singleAttempt = r1Entries.length === 1;
       const worstAttempt = r1Entries.reduce((w, r) => r.score < w.score ? r : w, r1Entries[0]);
-      // Single attempt passes at 100% (threshold is 1.0); multiple attempts show the worst score
-      const displayPct = singleAttempt ? 100 : Math.round(worstAttempt.score * 100);
+      const displayPct = Math.round(worstAttempt.score * 100);
       const r1ScoreColor = displayPct >= 70 ? "#16a34a" : "#dc2626";
       const r1Label = ROUND_TYPE_LABELS[1] ?? "Classification";
-      const r1Tip = singleAttempt
-        ? null
-        : (tips?.[1] ?? IMPROVEMENT_TIPS_HTML[r1Label] ?? "Review classification boundaries carefully.");
+      const r1Tip = tips?.[1] ?? IMPROVEMENT_TIPS_HTML[r1Label] ?? "Review classification boundaries carefully.";
 
       // Show only the worst attempt (or single attempt); not all attempts
       const displayAttempt = singleAttempt ? r1Entries[0] : worstAttempt;
@@ -1445,7 +1465,7 @@ export default function GameUI() {
             <div style="display:flex;gap:12px;font-size:12px;color:#64748b;align-items:center;">
               <span>Worst Score: <strong style="color:${r1ScoreColor}">${displayPct}%</strong></span>
               <span>Attempts: <strong>${r1Entries.length}</strong></span>
-              ${singleAttempt ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #bbf7d0;">First Attempt Pass</span>' : ""}
+              ${singleAttempt && displayPct >= 100 ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #bbf7d0;">First Attempt Pass</span>' : ""}
             </div>
           </div>
           ${attemptsDetailHtml}
@@ -1479,7 +1499,7 @@ export default function GameUI() {
         const bonusPrompt = passingAttempt.prompt as { metaPrompt?: string; compiledPrompt?: string } | null;
         const metaPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.metaPrompt) ? bonusPrompt.metaPrompt : formatPrompt(passingAttempt.prompt);
         const compiledPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.compiledPrompt) ? bonusPrompt.compiledPrompt : null;
-        const bonusTip = tips?.[6] ?? IMPROVEMENT_TIPS_HTML[ROUND_TYPE_NAMES.BONUS] ?? "Combine specificity, strict format, and constraints into one tight prompt.";
+        const bonusTip = tips?.[6] ?? IMPROVEMENT_TIPS_HTML[ROUND_TYPE_NAMES.BONUS] ?? "State exactly what the generated prompt should make the AI do and what the final answer should look like.";
         roundsHtml += `
           <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
@@ -1885,7 +1905,7 @@ export default function GameUI() {
                                     <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
                                       <span className="bg-cyan-900/50 text-cyan-200 px-2 py-0.5 rounded border border-cyan-800">PHASE 1</span> Author Meta-Prompt
                                     </h3>
-                                    <textarea className="w-full h-32 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Describe how the AI should infer hidden constraints and build the final prompt..."></textarea>
+                                    <textarea className="w-full h-32 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-slate-500 shadow-inner" disabled placeholder="Describe what the generated prompt should make the AI do and what the final answer should look like..."></textarea>
                                     <button disabled className="mt-2 bg-cyan-900/30 border border-cyan-800 text-cyan-600 px-4 py-2 rounded text-xs font-bold w-full uppercase tracking-widest">Generate Final Prompt</button>
                                   </div>
                                   <div className="flex flex-col gap-2 opacity-70">
@@ -2532,9 +2552,9 @@ export default function GameUI() {
                           <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
                             <p className="text-amber-400/90 font-bold mb-2">Optimization tips (≤15 words):</p>
                             <p>✦ <span className="text-cyan-400">Every word counts</span> — cut filler like &ldquo;please&rdquo;, &ldquo;can you&rdquo;, &ldquo;I want&rdquo;</p>
-                            <p>✦ The word <span className="text-cyan-400">&ldquo;analogy&rdquo;</span> must appear — it&apos;s the core requirement</p>
-                            <p>✦ Adding a <span className="text-cyan-400">role or audience</span> boosts quality without many extra words</p>
-                            <p>✦ Use <span className="text-cyan-400">imperative form</span>: &ldquo;Explain X using an analogy&rdquo; beats &ldquo;Can you explain X&rdquo;</p>
+                            <p>✦ Pick <span className="text-cyan-400">any concept and any analogy</span> you want — the evaluator scores the prompt, not the topic</p>
+                            <p>✦ Keep the prompt focused on making the AI <span className="text-cyan-400">explain the concept using the analogy</span></p>
+                            <p>✦ The generated response must be <span className="text-cyan-400">at least 50 words</span></p>
                           </div>
                         )}
 
@@ -2709,7 +2729,7 @@ export default function GameUI() {
                           })}
                         </div>
                       </div>
-                    ) : currentRoundData.type === "BONUS" ? (
+                  ) : currentRoundData.type === "BONUS" ? (
                       <div className="w-full grow bg-black/60 rounded border border-slate-700/50 p-6 overflow-y-auto shadow-[inset_0_0_30px_rgba(0,0,0,1)] opacity-90 flex flex-col gap-6">
 
                         <div className="flex flex-col gap-2">
@@ -2718,7 +2738,7 @@ export default function GameUI() {
                           </h3>
                           <textarea
                             className="w-full h-32 p-3 bg-slate-950 rounded border border-slate-700 text-cyan-100 outline-none focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none shadow-inner disabled:opacity-50"
-                            placeholder="Describe how the AI should infer hidden constraints and build the final prompt..."
+                            placeholder="Describe what the generated prompt should make the AI do and what the final answer should look like..."
                             value={metaPromptInput}
                             onChange={(e) => handleMetaPromptChange(e.target.value)}
                             disabled={inputLocked || isGeneratingMeta}
@@ -2759,18 +2779,35 @@ export default function GameUI() {
                         </div>
                       </div>
                     ) : (
-                      <textarea
-                        className="w-full grow p-4 bg-black/80 rounded border border-slate-700 text-slate-300 outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none min-h-[250px] shadow-[inset_0_0_30px_rgba(0,0,0,1)] disabled:opacity-50 transition-colors leading-relaxed"
-                        placeholder="Type your prompt here... (Copy/Paste disabled)"
-                        value={promptInput}
-                        onChange={(e) => setPromptInput(e.target.value)}
-                        disabled={inputLocked}
-                        onPaste={(e) => { e.preventDefault(); void reportViolation("COPY_PASTE"); }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => e.preventDefault()}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
+                      <>
+                        {currentRoundData.type === "OPTIMIZE" && (
+                          <div className="flex justify-end">
+                            <div
+                              className={`text-[11px] font-mono font-bold px-2 py-1 rounded border ${
+                                countWords(promptInput) > 15
+                                  ? "text-red-300 bg-red-950/40 border-red-900/60"
+                                  : countWords(promptInput) >= 12
+                                    ? "text-amber-300 bg-amber-950/40 border-amber-900/60"
+                                    : "text-cyan-200 bg-cyan-950/30 border-cyan-900/60"
+                              }`}
+                            >
+                              {countWords(promptInput)} / 15 words
+                            </div>
+                          </div>
+                        )}
+                        <textarea
+                          className="w-full grow p-4 bg-black/80 rounded border border-slate-700 text-slate-300 outline-none focus:border-cyan-700 focus:ring-1 focus:ring-cyan-500 font-mono text-sm resize-none min-h-[250px] shadow-[inset_0_0_30px_rgba(0,0,0,1)] disabled:opacity-50 transition-colors leading-relaxed"
+                          placeholder="Type your prompt here... (Copy/Paste disabled)"
+                          value={promptInput}
+                          onChange={(e) => setPromptInput(e.target.value)}
+                          disabled={inputLocked}
+                          onPaste={(e) => { e.preventDefault(); void reportViolation("COPY_PASTE"); }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => e.preventDefault()}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </>
                     )}
                   </div>
 
@@ -2983,9 +3020,19 @@ export default function GameUI() {
                 ) : null}
               </div>
             ) : (
-              <pre className="flex-1 overflow-y-auto px-6 py-5 text-sm font-mono text-green-300/80 whitespace-pre-wrap leading-relaxed">
-                {previousAttempt.output || "No output was captured for this attempt."}
-              </pre>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {(currentRoundData?.type === "IMPROVE" || currentRoundData?.type === "OPTIMIZE") && (
+                  <div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-mono uppercase tracking-widest">
+                    <span className="text-slate-500">Output Word Count</span>
+                    <span className="px-2 py-1 rounded border border-cyan-900/50 bg-cyan-950/30 text-cyan-300 font-bold">
+                      {countWords(previousAttempt.output || "")} words
+                    </span>
+                  </div>
+                )}
+                <pre className="text-sm font-mono text-green-300/80 whitespace-pre-wrap leading-relaxed">
+                  {previousAttempt.output || "No output was captured for this attempt."}
+                </pre>
+              </div>
             )}
 
             {/* Footer */}
@@ -3149,8 +3196,8 @@ export default function GameUI() {
                       const roundNum = idx + 1;
                       const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
                       const isFailedRound = isSummaryRoundFailed(roundNum, score);
-                      const isR1FirstTry = roundNum === 1 && stats.attemptsPerRound[1] === 1;
-                      const pct = isR1FirstTry ? 100 : Math.round(score * 100);
+                      const pct = Math.round(score * 100);
+                      const isR1FirstTry = roundNum === 1 && stats.attemptsPerRound[1] === 1 && pct >= 100;
                       const barColor = isFailedRound
                         ? "bg-red-500"
                         : pct >= 70

@@ -15,6 +15,7 @@ export type Player = {
   startedAt: number;
   completedAt?: number;
   roundsPlayed: number;
+  roundsPassed?: number;
   totalScore: number;
   averageScore: number;
   completed: boolean;

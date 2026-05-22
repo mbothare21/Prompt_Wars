@@ -39,8 +39,8 @@ export async function GET(req: Request) {
     }
 
     const docs = (await PlayerModel.find(locationFilter)
-      .select("name email location roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
-      .sort({ roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
+      .select("name email location roundsPassed roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
+      .sort({ roundsPassed: -1, roundsPlayed: -1, avgAccuracy: -1, timeTaken: 1, attemptsTaken: 1 })
       .lean()) as RawAdminPlayerDoc[];
 
     const players = sortAdminPlayers(
