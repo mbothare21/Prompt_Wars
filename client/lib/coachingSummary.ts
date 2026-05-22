@@ -1,10 +1,10 @@
 const ROUND_LABELS: Record<number, string> = {
-  1: "Signal Scan",
-  2: "Prompt Refinery",
-  3: "Backtrace",
-  4: "Compression Chamber",
-  5: "Protocol Stack",
-  6: "Prompt Forge",
+  1: "Classification",
+  2: "Prompt Improvement",
+  3: "Reverse Engineering",
+  4: "Optimization",
+  5: "Structured Output",
+  6: "Bonus Challenge",
 };
 
 export type CoachingRound = {

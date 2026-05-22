@@ -384,15 +384,18 @@ Return JSON only — no markdown, no explanation:
 function buildOptimizeRubric(): string {
   return `You are a scoring engine for a prompt-engineering game.
 
-The player's task: write a concise prompt (ideally ≤15 words) that makes an AI explain any concept using a clear analogy or comparison, and produce an output of at least 50 words.
+The player's task: write a concise, self-contained prompt (ideally ≤30 words) that names a concept and an analogy, and makes an AI explain that concept using that analogy in at least 50 words.
 
 Score using these explicit criteria.
 
 PROMPT score (0–1):
-• +0.35 if the prompt is ≤15 words
-• +0.30 if the prompt explicitly requests or implies an analogy, comparison, or metaphor
-• +0.20 if the prompt is clear and action-oriented
-• +0.15 if the prompt gives useful scope (audience, format, or style)
+• +0.35 if the prompt is ≤30 words
+• +0.25 if the prompt clearly names a concept
+• +0.25 if the prompt clearly names an analogy or comparison
+• +0.15 if the prompt explicitly requests explanation using that analogy
+• +0.15 if the prompt is clear and action-oriented
+• +0.10 if the prompt is self-contained and does not rely on extra input
+• +0.10 if the prompt gives useful scope (audience, format, or style)
 
 OUTPUT quality score (0–1):
 • +0.20 if the output is at least 50 words
@@ -710,8 +713,8 @@ export function hasGroundingInstruction(prompt: string): boolean {
 
 function getBrevityScore(prompt: string): number {
   const words = prompt.trim().split(/\s+/).filter(Boolean).length;
-  if (words > 15) return 0;
-  return 1 - (words / 15) * 0.5;
+  if (words > 30) return 0;
+  return 1 - (words / 30) * 0.5;
 }
 
 export function scorePromptSpecificity(prompt: string): number {
@@ -991,7 +994,8 @@ async function scoreOptimizeOutcome(
     prompt: promptScore,
   } =
     await scoreCombined(prompt, output, { roundType: "OPTIMIZE" });
-  const groundingScore = scoreTokenGrounding(output, round.input ?? "");
+  const groundingSource = round.input?.trim() ? round.input : prompt;
+  const groundingScore = scoreTokenGrounding(output, groundingSource);
   const taskOutputScore =
     0.40 * qualityScore +
     0.30 * analogyQualityScore +

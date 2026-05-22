@@ -165,8 +165,8 @@ function countWords(text: string): number {
 }
 
 const OPTIMIZE_GUIDANCE = [
-  "Choose any concept and any analogy; the topic itself is not being scored.",
-  "Your prompt must stay at 15 words or fewer.",
+  "Write one self-contained prompt that names both a concept and an analogy.",
+  "Your prompt must stay at 30 words or fewer.",
   "The AI output must be at least 50 words.",
   "Optimize for clarity and control, not for copying a sample answer.",
 ];
@@ -1389,7 +1389,7 @@ export default function GameUI() {
       [ROUND_TYPE_NAMES.CLASSIFY]: "Focus on specific classification boundaries — avoid over-generalising labels.",
       [ROUND_TYPE_NAMES.IMPROVE]: "Add explicit constraints and clear structure to guide the model more precisely.",
       [ROUND_TYPE_NAMES.REVERSE]: "Work backwards from the expected output to identify the key prompt patterns.",
-      [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — strip every redundant word or modifier.",
+      [ROUND_TYPE_NAMES.OPTIMIZE]: "Prioritise information density — keep the prompt self-contained, named, and under the word cap.",
       [ROUND_TYPE_NAMES.STRUCTURED]: "Follow every format requirement exactly as specified — no extra sections.",
       [ROUND_TYPE_NAMES.BONUS]: "State exactly what the generated prompt should make the AI do and what the final answer should look like.",
     };
@@ -2554,7 +2554,7 @@ export default function GameUI() {
 
                         {roundNumber === 4 && (
                           <div className="space-y-2 text-xs font-mono text-slate-300 leading-relaxed">
-                            <p className="text-amber-400/90 font-bold mb-2">Optimization tips (≤15 words):</p>
+                            <p className="text-amber-400/90 font-bold mb-2">Optimization tips (≤30 words):</p>
                             <p>✦ <span className="text-cyan-400">Every word counts</span> — cut filler like &ldquo;please&rdquo;, &ldquo;can you&rdquo;, &ldquo;I want&rdquo;</p>
                             <p>✦ Pick <span className="text-cyan-400">any concept and any analogy</span> you want — the evaluator scores the prompt, not the topic</p>
                             <p>✦ Keep the prompt focused on making the AI <span className="text-cyan-400">explain the concept using the analogy</span></p>
@@ -2788,14 +2788,14 @@ export default function GameUI() {
                           <div className="flex justify-end">
                             <div
                               className={`text-[11px] font-mono font-bold px-2 py-1 rounded border ${
-                                countWords(promptInput) > 15
+                                countWords(promptInput) > 30
                                   ? "text-red-300 bg-red-950/40 border-red-900/60"
-                                  : countWords(promptInput) >= 12
+                                  : countWords(promptInput) >= 24
                                     ? "text-amber-300 bg-amber-950/40 border-amber-900/60"
                                     : "text-cyan-200 bg-cyan-950/30 border-cyan-900/60"
                               }`}
                             >
-                              {countWords(promptInput)} / 15 words
+                              {countWords(promptInput)} / 30 words
                             </div>
                           </div>
                         )}
