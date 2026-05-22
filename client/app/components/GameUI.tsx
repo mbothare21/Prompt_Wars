@@ -578,6 +578,10 @@ export default function GameUI() {
     setR5HintUnlocked(false);
     setPreviousAttempt(null);
     setShowPreviousOutput(false);
+    setPromptInput("");
+    setMetaPromptInput("");
+    setGeneratedPrompt(null);
+    setDropdownSelections({});
   }, [roundNumber]);
 
   // Auto-close BONUS round modal after 15 seconds, then go to finished screen
@@ -3006,9 +3010,6 @@ export default function GameUI() {
                       <span className={`font-bold ${d.isCorrect ? "text-green-400" : "text-red-400"}`}>
                         {d.isCorrect ? "✓" : "✗"} Your answer: {d.chosen ?? "No answer"}
                       </span>
-                      {!d.isCorrect && (
-                        <span className="text-slate-500">→ Correct: <span className="text-green-400 font-bold">{d.correct}</span></span>
-                      )}
                     </div>
                   </div>
                 ))}

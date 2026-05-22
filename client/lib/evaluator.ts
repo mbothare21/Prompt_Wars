@@ -714,6 +714,36 @@ function getBrevityScore(prompt: string): number {
   return 1 - (words / 15) * 0.5;
 }
 
+export function scorePromptSpecificity(prompt: string): number {
+  const normalized = normalizeForMatch(prompt);
+  const wordCount = countWords(prompt);
+  const meaningfulTokens = collectMeaningfulTokens(prompt, 12);
+
+  let score = clamp(meaningfulTokens.length / 8);
+
+  if (wordCount <= 3) {
+    score *= 0.35;
+  }
+
+  if (/^(summarize|summarise|explain|describe|write|rewrite|improve|fix|create)(?:\s+(?:this|it))?\.?$/i.test(normalized)) {
+    score = Math.min(score, 0.15);
+  }
+
+  if (/\b(conflicts?|decisions?|dependencies?|risks?|next steps?)\b/i.test(prompt)) {
+    score += 0.1;
+  }
+
+  if (/\b(word limit|words?|sections?|bullet|heading|structured|grounded|hallucinate|input data|provided input)\b/i.test(prompt)) {
+    score += 0.1;
+  }
+
+  if (hasNegativePrompting(prompt) || hasGroundingInstruction(prompt)) {
+    score += 0.15;
+  }
+
+  return clamp(score);
+}
+
 function evaluateStructure(output: string): number {
   const bullets = (output.match(/[-*]\s+/g) || []).length;
   const numbered = (output.match(/\b\d+\./g) || []).length;
@@ -887,12 +917,13 @@ async function scoreImproveOutcome(
   );
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
+  const specificityScore = scorePromptSpecificity(prompt);
   const requiredSectionsScore =
     isPlainObject(round.constraints) && Array.isArray((round.constraints as ObjectConstraints).requiredSections)
       ? scoreRequiredSections(output, (round.constraints as ObjectConstraints).requiredSections ?? [])
       : 1;
   const groundingScore = scoreTokenGrounding(output, round.input ?? round.expectedOutput ?? "");
-  const promptScore = clamp(0.6 * rawPromptScore + 0.4 * constraintCoverage);
+  const promptScore = clamp(0.45 * rawPromptScore + 0.35 * constraintCoverage + 0.20 * specificityScore);
   const similarityScore = round.expectedOutput
     ? await getSimilarity(output, round.expectedOutput)
     : 1;
@@ -908,6 +939,7 @@ async function scoreImproveOutcome(
     similarityScore,
     requiredSectionsScore,
     groundingScore,
+    specificityScore,
     promptScore,
     constraintScore,
     taskOutputScore,
@@ -1182,14 +1214,17 @@ async function evaluateImproveRound(round: Round, userPrompt: string) {
     0.3 * scored.taskOutputScore +
     0.4 * scored.promptScore +
     0.3 * baselineGate.baselineGateScore;
+  const cappedFinalScore = scored.specificityScore < 0.35
+    ? Math.min(finalScore, 0.48)
+    : finalScore;
   return {
     output,
     ...scored,
     ...baselineGate,
     baselinePrompt: baseline.baselinePrompt,
     baselineOutput: baseline.baselineOutput,
-    finalScore,
-    progress: Math.round(finalScore * 100),
+    finalScore: cappedFinalScore,
+    progress: Math.round(cappedFinalScore * 100),
   };
 }
 
