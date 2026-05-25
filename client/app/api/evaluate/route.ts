@@ -197,7 +197,11 @@ export async function POST(req: Request) {
         round: roundNum,
         attempts: session.attemptsPerRound[roundNum],
         score: 0,
-        prompt: round.type === "CLASSIFY" ? answers : prompt,
+        prompt: round.type === "CLASSIFY"
+          ? answers
+          : round.type === "BONUS"
+            ? { metaPrompt }
+            : prompt,
         output: "",
       },
     ];
@@ -438,7 +442,11 @@ export async function POST(req: Request) {
         round: roundNum,
         attempts: session.attemptsPerRound[roundNum],
         score: 0,
-        prompt: round.type === "CLASSIFY" ? answers : prompt,
+        prompt: round.type === "CLASSIFY"
+          ? answers
+          : round.type === "BONUS"
+            ? { metaPrompt, compiledPrompt: "compiledPrompt" in result ? result.compiledPrompt : undefined }
+            : prompt,
         output: ("output" in result ? result.output : undefined) ?? ("finalOutput" in result ? result.finalOutput : undefined) ?? "",
       },
     ];

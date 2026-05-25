@@ -771,7 +771,7 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 4,
             type: "OPTIMIZE",
             instruction:
-                "Write an optimized prompt that will explain any concept of your choice using an analogy of your choice.",
+                "Write an optimized prompt that will explain any concept using an analogy of your choice.",
             referenceExample:
                 "Example only: \"Explain recursion using a cooking recipe analogy.\"",
             constraints: { maxPromptWords: 30, minOutputWords: 50 },
@@ -782,7 +782,7 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 5,
             type: "STRUCTURED",
             instruction:
-                "Design a prompt that forces the AI to think step-by-step and produce a structured solution.",
+                "Design a prompt that forces the AI to think step-by-step and produce a structured solution of the puzzle given below",
             ...pick(sessionId, 5, ROUND_5_SETS),
         },
 
@@ -791,7 +791,7 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 6,
             type: "BONUS",
             instruction:
-                "You are given a scenario and a target signature. Write a meta-prompt that will make an AI generate a final prompt whose job is to produce a BI-style report from the scenario with stats, analysis, insights, and recommended actions.",
+                "Write a meta-prompt that will make an AI generate a final prompt whose job is to produce a BI-style report from the scenario. The sections of the report must be identified based on the input given.",
             ...pick(sessionId, 6, ROUND_6_SETS),
         }
     ];
