@@ -104,7 +104,7 @@ const ROUND_2_SETS = [
     // ── Set 1 (Original — Product Launch Strategy) ────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to produce the desired structured output. Improve the given prompt to extract structured highlights (Conflicts, Decisions, Dependencies, Next Steps). Use only the input data, do not add information of your own, do not hallucinate, do not add extra information, and keep the output summary ≤200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to produce the desired structured output. Improve the given prompt to extract structured highlights (Conflicts, Decisions, Dependencies, Next Steps). Use only the input data, do not add information of your own and keep the output summary ≤200 words.",
         originalPrompt: "Summarize this",
         input: `The quarterly strategy meeting for the upcoming product launch was held on Monday and brought together stakeholders from product management, marketing, operations, customer success, and regional sales teams. While the meeting was initially intended to finalize the launch timeline and align on execution priorities, it quickly became evident that there were several unresolved dependencies and differing viewpoints that prevented clear decision-making.
 
@@ -159,7 +159,7 @@ Assign ownership for risks, QA, and supply chain mitigation
     // ── Set 2 (Customer Retention Review) ─────────────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights (Conflicts, Decisions made, Dependencies, Risks, Next steps). Use only the input data, do not add information of your own, do not hallucinate, do not add extra information, and keep the output summary ≤200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights (Conflicts, Decisions made, Dependencies, Risks, Next steps). Use only the input data, do not add information of your own and keep the output summary ≤200 words.",
         originalPrompt: "Give me the key points",
         input: `The quarterly strategy review meeting focused heavily on the growing concerns around customer retention and declining renewal rates in the company's subscription business. Marketing leadership argued that customers were abandoning the platform because the onboarding experience was confusing and lacked clear activation milestones. They pointed to survey feedback indicating that many users did not fully understand the platform's value during their first two weeks.
 
@@ -199,7 +199,7 @@ Conduct churn analysis, redesign onboarding, review feature adoption metrics.`,
     // ── Set 3 (Operational Review — Support Delays) ───────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary (Conflicts, Decisions made, Dependencies, Risks, Next steps). Use only the input data, do not add information of your own, do not hallucinate, do not add extra information, and keep the output summary ≤200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary (Conflicts, Decisions made, Dependencies, Risks, Next steps). Use only the input data, do not add information of your own and keep the output summary ≤200 words.",
         originalPrompt: "Tell me the important parts",
         input: `During the monthly operational review meeting, leadership teams discussed recurring delays in customer issue resolution and growing dissatisfaction among enterprise accounts. Support leadership argued that engineering response times had slowed considerably, resulting in unresolved customer escalations and longer turnaround times. They presented examples where urgent customer incidents remained open for several days because technical investigations were delayed.
 
@@ -534,13 +534,26 @@ Program Analytics Team`,
         },
     },
     {
-        input: `A multinational fintech company operating across Europe and North America has detected an unusual increase in suspicious authentication failures affecting enterprise customer accounts over the past 72 hours. Internal monitoring systems flagged repeated failed MFA attempts, geographically inconsistent login behavior, and elevated credential reset requests originating from multiple regions.
+        input: `A multinational fintech company is facing suspicious authentication activity across Europe and North America.
 
-Security teams suspect a coordinated credential stuffing attack but cannot yet confirm the source due to incomplete forensic evidence. Engineering teams are concerned that aggressively restricting account access could disrupt business-critical operations for enterprise customers, particularly those relying on real-time financial reporting and automated payment processing.
+Overview:
+Enterprise customer accounts have shown unusual login failures over the past 72 hours.
 
-Meanwhile, legal and compliance teams have raised concerns regarding regulatory obligations in different jurisdictions, especially around customer communication, temporary access restrictions, and incident disclosure timelines. Customer success teams are also reporting increasing anxiety among major accounts, with some enterprise customers threatening escalation unless immediate action is taken.
+Stats:
+- 18,400 enterprise customer accounts are in scope
+- 6,200 failed MFA attempts have been recorded
+- Activity spans 14 regions
+- 1,480 credential reset requests were triggered
+- 42 accounts generated risk alerts in the last 24 hours
+- 11 login clusters showed repeated failure loops
+- 17 enterprise customers are threatening escalation
+- About 28% of daily enterprise login volume could be affected
 
-Operational leaders need a concise BI-style report that summarizes the monitoring signals, explains what the data suggests, and lists the best response options without turning the output into a generic executive memo.`,
+Risks:
+Security teams suspect credential stuffing, but the forensic evidence is incomplete. Engineering is concerned that restrictive controls could disrupt real-time financial reporting and automated payment processing.
+
+Constraints:
+Legal and compliance teams have raised concerns around communication obligations, temporary restrictions, and incident disclosure timelines. Leadership needs a recommendation within 4 hours.`,
         expectedOutput: "A BI-style incident report with stats, analysis, insights, and recommended actions.",
         constraints: {},
         bonusEvalConfig: {
@@ -552,11 +565,14 @@ Overview:
 Monitoring shows unusual authentication failures across enterprise accounts in Europe and North America over the last 72 hours. The pattern suggests a coordinated abuse campaign, but the forensic picture is not yet complete.
 
 Stats Snapshot:
-- 72-hour monitoring window
-- repeated failed MFA attempts
-- geographically inconsistent login behavior
-- elevated credential reset requests from multiple regions
-- enterprise customer accounts are the affected scope
+- 18,400 enterprise customer accounts affected
+- 6,200 failed MFA attempts recorded over 72 hours
+- 14 regions with geographically inconsistent login behavior
+- 1,480 elevated credential reset requests
+- 42 accounts triggered risk alerts in the last 24 hours
+- 11 login clusters showed repeated failure loops
+- 17 enterprise customers are escalating
+- 28% of daily enterprise login volume could be impacted
 
 Analysis:
 The signal is consistent with credential stuffing or another automated login-abuse pattern. The main operational tradeoff is whether to contain aggressively now or preserve enterprise customer access while more evidence is gathered.
@@ -565,6 +581,7 @@ BI Insights:
 - The issue spans both Europe and North America, so response coordination must be region-aware
 - MFA failures plus inconsistent geography are stronger indicators than any single alert by itself
 - Temporary access restrictions could disrupt real-time financial reporting and automated payment processing
+- The 4-hour response window makes this an urgent triage decision
 - Compliance and customer communication need to move in parallel with engineering investigation
 
 Recommended Actions:
@@ -607,13 +624,25 @@ Security Operations Team`,
         },
     },
     {
-        input: `A global electronics manufacturer preparing for multiple high-profile product launches is facing a growing supply chain disruption after a major semiconductor supplier unexpectedly reported production instability. Initial reports suggest that shortages may continue for several weeks, affecting inventory commitments across North America, Europe, and Asia.
+        input: `A global electronics manufacturer is managing a supply chain disruption tied to a semiconductor supplier.
 
-Operations teams have proposed delaying lower-priority product lines to preserve supply for flagship launches, while finance leadership has temporarily frozen additional procurement spending until cost implications become clearer. Product leadership believes launch timelines should remain unchanged to avoid reputational damage and competitive disadvantage.
+Overview:
+Multiple high-profile product launches are at risk while inventory, spending, and customer commitments are reassessed.
 
-Customer success and enterprise account teams have raised concerns that delayed shipments could significantly affect strategic enterprise relationships, particularly for customers with long-term purchasing agreements and deployment deadlines. Meanwhile, procurement teams are investigating alternate suppliers, but legal teams have warned that switching vendors may introduce compliance and contractual risks.
+Stats:
+- Shortages may continue for 5 to 7 weeks
+- 3 launch lines already show delay risk
+- Inventory coverage is 68% for critical components
+- Finance has frozen $12M in procurement spending
+- 2 alternate suppliers are being evaluated
+- The next supplier checkpoint is in 9 days
+- Inventory commitments span North America, Europe, and Asia
 
-Leadership wants a BI-style supply chain report that highlights the strongest stats, explains the operational implications, and recommends the best response path.`,
+Risks:
+Supplier production instability is creating overlap between procurement constraints and launch dependencies. Delaying lower-priority product lines could protect flagship launches but may push other commitments further out.
+
+Constraints:
+Legal, procurement, and compliance approvals may slow mitigation options, and customer success teams are already managing strategic enterprise account pressure.`,
         expectedOutput: "A BI-style supply chain report with stats, analysis, insights, and recommended actions.",
         constraints: {},
         bonusEvalConfig: {
@@ -625,11 +654,13 @@ Overview:
 A semiconductor supplier has reported production instability, putting multiple product launches at risk and forcing the team to reassess inventory, spending, and customer commitments.
 
 Stats Snapshot:
-- Shortages may continue for several weeks
+- Shortages may continue for 5 to 7 weeks
+- 3 launch lines are already showing delay risk
+- Inventory coverage is 68% for critical components
+- Finance has frozen $12M in procurement spending
+- 2 alternate suppliers are under review
+- The next supplier checkpoint is in 9 days
 - Inventory commitments span North America, Europe, and Asia
-- Finance has frozen additional procurement spending
-- Delays affect multiple high-profile product launches
-- Customer success is managing strategic enterprise accounts
 
 Analysis:
 The disruption is strongest where supplier concentration, procurement constraints, and launch dependencies overlap. The biggest operational risk is that preserving supply for flagship launches could push lower-priority products and customer commitments further out.
@@ -638,6 +669,7 @@ BI Insights:
 - Supplier instability is the primary signal, but the downstream impact is financial and customer-facing
 - Alternative supplier work is constrained by legal, procurement, and spending approvals
 - Enterprise relationship risk increases when shipment delays hit long-term purchasing agreements
+- The next 9 days are the clearest window for corrective action
 - The launch portfolio should be prioritized by business value rather than treated as one uniform queue
 
 Recommended Actions:
