@@ -306,13 +306,18 @@ export default function GameUI() {
           // Advancing to a new round — clear stale per-round UI state
           setLastResult(null);
           setPreviousAttempt(null);
+          setPromptInput("");
+          setMetaPromptInput("");
+          setGeneratedPrompt(null);
+          setDropdownSelections({});
         }
         roundNumberRef.current = data.roundNumber;
         setRoundNumber(data.roundNumber);
       }
       if (typeof data.remainingTime === "number") {
         deadlineRef.current = Date.now() + data.remainingTime;
-        setTimeLeftSec(Math.max(0, Math.ceil(data.remainingTime / 1000)));
+        // setTimeLeftSec is intentionally omitted here — tickCountdown updates
+        // the display on the next 1s tick, avoiding jarring jumps on poll re-syncs.
       }
       setCurrentRoundData({
         type: data.roundType,
@@ -336,6 +341,7 @@ export default function GameUI() {
 
   const refreshRound = useCallback(
     async (sid: string) => {
+      const requestSentAt = Date.now();
       const res = await fetch("/api/get-round", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -347,6 +353,12 @@ export default function GameUI() {
         data = (await res.json()) as typeof data;
       } catch {
         throw new Error("Invalid response from get-round");
+      }
+      // Compensate for one-way network latency: the server computed remainingTime just
+      // before sending, so by the time we receive it, half the round-trip has elapsed.
+      if (typeof data.remainingTime === "number" && data.remainingTime !== Infinity) {
+        const roundTripMs = Date.now() - requestSentAt;
+        data.remainingTime = Math.max(0, data.remainingTime - Math.round(roundTripMs / 2));
       }
 
       if (!res.ok) {
@@ -572,16 +584,11 @@ export default function GameUI() {
     [finishGame]
   );
 
-  // Close hint cloud and reset per-round hint state when round changes
+  // Close hint cloud and modal when round changes
   useEffect(() => {
     setHintOpen(false);
     setR5HintUnlocked(false);
-    setPreviousAttempt(null);
     setShowPreviousOutput(false);
-    setPromptInput("");
-    setMetaPromptInput("");
-    setGeneratedPrompt(null);
-    setDropdownSelections({});
   }, [roundNumber]);
 
   // Auto-close BONUS round modal after 15 seconds, then go to finished screen

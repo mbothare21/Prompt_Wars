@@ -534,26 +534,7 @@ Program Analytics Team`,
         },
     },
     {
-        input: `A multinational fintech company is facing suspicious authentication activity across Europe and North America.
-
-Overview:
-Enterprise customer accounts have shown unusual login failures over the past 72 hours.
-
-Stats:
-- 18,400 enterprise customer accounts are in scope
-- 6,200 failed MFA attempts have been recorded
-- Activity spans 14 regions
-- 1,480 credential reset requests were triggered
-- 42 accounts generated risk alerts in the last 24 hours
-- 11 login clusters showed repeated failure loops
-- 17 enterprise customers are threatening escalation
-- About 28% of daily enterprise login volume could be affected
-
-Risks:
-Security teams suspect credential stuffing, but the forensic evidence is incomplete. Engineering is concerned that restrictive controls could disrupt real-time financial reporting and automated payment processing.
-
-Constraints:
-Legal and compliance teams have raised concerns around communication obligations, temporary restrictions, and incident disclosure timelines. Leadership needs a recommendation within 4 hours.`,
+        input: `A multinational fintech company is facing suspicious authentication activity across Europe and North America. Over the past 72 hours, 18,400 enterprise customer accounts have been in scope, with 6,200 failed MFA attempts recorded across 14 regions. The activity triggered 1,480 credential reset requests, 42 risk alerts in the last 24 hours, and repeated failure loops across 11 login clusters, while 17 enterprise customers are threatening escalation and about 28% of daily enterprise login volume could be affected. Security teams suspect credential stuffing, but the forensic evidence is incomplete, and Engineering is concerned that restrictive controls could disrupt real-time financial reporting and automated payment processing. Legal and compliance teams have raised concerns around communication obligations, temporary restrictions, and incident disclosure timelines, and leadership needs a recommendation within 4 hours.`,
         expectedOutput: "A BI-style incident report with stats, analysis, insights, and recommended actions.",
         constraints: {},
         bonusEvalConfig: {
@@ -624,25 +605,7 @@ Security Operations Team`,
         },
     },
     {
-        input: `A global electronics manufacturer is managing a supply chain disruption tied to a semiconductor supplier.
-
-Overview:
-Multiple high-profile product launches are at risk while inventory, spending, and customer commitments are reassessed.
-
-Stats:
-- Shortages may continue for 5 to 7 weeks
-- 3 launch lines already show delay risk
-- Inventory coverage is 68% for critical components
-- Finance has frozen $12M in procurement spending
-- 2 alternate suppliers are being evaluated
-- The next supplier checkpoint is in 9 days
-- Inventory commitments span North America, Europe, and Asia
-
-Risks:
-Supplier production instability is creating overlap between procurement constraints and launch dependencies. Delaying lower-priority product lines could protect flagship launches but may push other commitments further out.
-
-Constraints:
-Legal, procurement, and compliance approvals may slow mitigation options, and customer success teams are already managing strategic enterprise account pressure.`,
+        input: `A global electronics manufacturer is managing a supply chain disruption tied to a semiconductor supplier. Shortages may continue for 5 to 7 weeks, 3 launch lines already show delay risk, inventory coverage is 68% for critical components, Finance has frozen $12M in procurement spending, 2 alternate suppliers are being evaluated, and the next supplier checkpoint is in 9 days. Inventory commitments span North America, Europe, and Asia, and supplier production instability is creating overlap between procurement constraints and launch dependencies. Delaying lower-priority product lines could protect flagship launches but may push other commitments further out, while legal, procurement, and compliance approvals may slow mitigation options and customer success teams are already managing strategic enterprise account pressure.`,
         expectedOutput: "A BI-style supply chain report with stats, analysis, insights, and recommended actions.",
         constraints: {},
         bonusEvalConfig: {
