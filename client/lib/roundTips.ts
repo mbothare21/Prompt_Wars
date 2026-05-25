@@ -28,6 +28,12 @@ export type RoundForTip = {
   output?: string;
 };
 
+export type RoundContext = {
+  instruction?: string | null;
+  input?: string | null;
+  expectedOutput?: string | null;
+};
+
 function formatPrompt(prompt: unknown): string {
   if (typeof prompt === "string") return prompt.trim();
   if (prompt && typeof prompt === "object") {
@@ -43,26 +49,38 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
-async function generateSingleTip(r: RoundForTip): Promise<string | null> {
+function buildContextBlock(ctx: RoundContext | undefined): string {
+  if (!ctx) return "";
+  const lines: string[] = [];
+  if (ctx.instruction) lines.push(`Round instruction: ${truncate(ctx.instruction, 600)}`);
+  if (ctx.input) lines.push(`Input/data the player was given: ${truncate(ctx.input, 800)}`);
+  if (ctx.expectedOutput) lines.push(`Expected output pattern: ${truncate(ctx.expectedOutput, 600)}`);
+  return lines.length > 0 ? lines.join("\n") + "\n" : "";
+}
+
+async function generateSingleTip(r: RoundForTip, ctx?: RoundContext): Promise<string | null> {
   const label = ROUND_TYPE_LABELS[r.round] ?? `Round ${r.round}`;
   const pct = Math.round(r.score * 100);
   const promptText = truncate(formatPrompt(r.prompt), 1200);
   const outputText = r.output ? truncate(r.output, 800) : null;
+  const contextBlock = buildContextBlock(ctx);
 
   const instruction =
     r.round === 1
-      ? `The player assembled this prompt by selecting preset prompt-engineering techniques (such as Role prompting, Chain-of-thought, Few-shot examples, etc.).
+      ? `The player assembled this prompt by selecting preset prompt-engineering techniques (such as Role prompting, Chain-of-thought, Few-shot examples, etc.) for each section.
 
-For each technique present in the player's prompt:
-1. Explain what that technique means in plain terms.
-2. Explain whether it was the right choice for that specific section of the prompt and why.
+For each section of the prompt:
+1. Identify the technique the player chose and explain in plain terms what that technique does.
+2. State whether it was the right choice for that section and why — or, if wrong, what the correct technique should have been and why it fits better.
 
-Also highlight any techniques that were incorrect or missing and what should have been chosen instead.`
-      : `Based on the player's exact prompt and the AI output it produced:
-1. Explain specifically what in the prompt caused the score to fall short of 100%.
+Then, as a separate closing section:
+3. Present the ideal correct combination and order of techniques for this prompt. Explain why that specific sequence is the most effective and optimized approach — what each technique contributes, why their ordering matters, and how they build on each other to produce the best possible output.`
+      : `Based on the round's task, the player's exact prompt, and the AI output it produced:
+1. Explain specifically why this prompt failed or would not produce the correct output — reference the round's instruction and input directly.
 2. Describe concretely how the prompt should be rewritten or extended to achieve a higher score.`;
 
   const userContent = [
+    contextBlock,
     `Round: ${label}`,
     `Score: ${pct}%`,
     `Attempts: ${r.attempts}`,
@@ -84,7 +102,7 @@ Also highlight any techniques that were incorrect or missing and what should hav
         {
           role: "system",
           content:
-            "You are a prompt engineering coach reviewing a competition submission. Be specific and direct. Do not start sentences with 'Your prompt' or 'The prompt'. Use plain language.",
+            "You are a prompt engineering coach reviewing a competition submission. Be specific and direct. Explain exactly why the prompt failed or fell short given the task's requirements — reference the instruction and input when relevant. Do not start sentences with 'Your prompt' or 'The prompt'. Use plain language.",
         },
         { role: "user", content: userContent },
       ],
@@ -100,10 +118,12 @@ Also highlight any techniques that were incorrect or missing and what should hav
 
 async function generateMultiAttemptTip(
   roundNum: number,
-  attempts: RoundForTip[]
+  attempts: RoundForTip[],
+  ctx?: RoundContext
 ): Promise<string | null> {
   const label = ROUND_TYPE_LABELS[roundNum] ?? `Round ${roundNum}`;
   const finalPct = Math.round(attempts[attempts.length - 1].score * 100);
+  const contextBlock = buildContextBlock(ctx);
 
   const attemptsText = attempts
     .map((r, i) => {
@@ -128,11 +148,12 @@ async function generateMultiAttemptTip(
         {
           role: "system",
           content:
-            "You are a prompt engineering coach reviewing multiple attempts at a competition challenge. Be specific and direct. Do not start sentences with 'Your prompt' or 'The prompt'. Use plain language.",
+            "You are a prompt engineering coach reviewing multiple attempts at a competition challenge. Be specific and direct. Explain why each prompt failed given the task's requirements — reference the instruction and input when relevant. Do not start sentences with 'Your prompt' or 'The prompt'. Use plain language.",
         },
         {
           role: "user",
           content: [
+            contextBlock,
             `Round: ${label}`,
             `Total Attempts: ${attempts.length}`,
             `Final Score: ${finalPct}%`,
@@ -140,10 +161,10 @@ async function generateMultiAttemptTip(
             "All attempts in order:",
             attemptsText,
             "",
-            "Based on the progression across all attempts:",
-            "1. Identify what improved between attempts and what the player figured out along the way.",
-            "2. Explain what in the final prompt still limited the score below 100%.",
-            "3. Describe concretely what changes would push the score higher on the next try.",
+            "Based on the round's task and the progression across all attempts:",
+            "1. For each attempt, explain specifically why that prompt failed or fell short — reference the instruction and input directly.",
+            "2. Identify what improved between attempts and what the player figured out along the way.",
+            "3. Explain what in the final prompt still limited the score, and describe concretely what changes would push the score higher.",
           ].join("\n"),
         },
       ],
@@ -158,7 +179,8 @@ async function generateMultiAttemptTip(
 }
 
 export async function generateRoundTips(
-  rounds: RoundForTip[]
+  rounds: RoundForTip[],
+  roundContexts: Record<number, RoundContext> = {}
 ): Promise<Record<number, string>> {
   // Group all attempt records by round number, sort each group by attempt count
   const byRound = new Map<number, RoundForTip[]>();
@@ -171,6 +193,7 @@ export async function generateRoundTips(
   const entries = await Promise.all(
     Array.from(byRound.entries()).map(async ([roundNum, attempts]) => {
       const sorted = [...attempts].sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0));
+      const ctx = roundContexts[roundNum];
 
       // Round 1, single attempt — got it right first try, no tip needed
       if (roundNum === 1 && sorted.length === 1) return null;
@@ -178,18 +201,18 @@ export async function generateRoundTips(
       // Round 1, multiple attempts — tip based on the worst attempt
       if (roundNum === 1) {
         const worst = sorted.reduce((w, r) => r.score < w.score ? r : w, sorted[0]);
-        const tip = await generateSingleTip(worst);
+        const tip = await generateSingleTip(worst, ctx);
         return tip !== null ? ([roundNum, tip] as const) : null;
       }
 
       // Other rounds, single attempt
       if (sorted.length === 1) {
-        const tip = await generateSingleTip(sorted[0]);
+        const tip = await generateSingleTip(sorted[0], ctx);
         return tip !== null ? ([roundNum, tip] as const) : null;
       }
 
       // Other rounds, multiple attempts — consolidated tip covering all attempts
-      const tip = await generateMultiAttemptTip(roundNum, sorted);
+      const tip = await generateMultiAttemptTip(roundNum, sorted, ctx);
       return tip !== null ? ([roundNum, tip] as const) : null;
     })
   );

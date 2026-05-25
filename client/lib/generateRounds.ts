@@ -240,7 +240,7 @@ Standardize documentation, improve escalation workflows, revisit automation late
 const ROUND_3_SETS = [
     // ── Set 1 (Original — Smart Habit AI Startup) ─────────────────────
     {
-        instruction: "Write a prompt that would generate the following structured startup idea.",
+        instruction: "Write a prompt that will generate the Target output given below. The output should be a structured with clear sections and concise content.",
         expectedOutput: `Startup: Smart Habit AI
 
 Problem:
@@ -285,7 +285,7 @@ User drop-off after initial engagement`,
 
     // ── Set 2 (Payment Gateway Incident Postmortem) ───────────────────
     {
-        instruction: "Write a prompt that would generate the following structured incident postmortem.",
+        instruction: "Write a prompt that will generate the Target output given below. The output should be a structured with clear sections and concise content.",
         expectedOutput: `Incident Report: Payment Gateway Service Disruption
 
 Incident Summary:
@@ -334,7 +334,7 @@ Introduce automated rollback triggers, improve deployment validation, and streng
 
     // ── Set 3 (Smart Study Planner PRD) ───────────────────────────────
     {
-        instruction: "Write a prompt that would generate the following structured product requirements document.",
+        instruction: "Write a prompt that will generate the Target output given below. The output should be a structured with clear sections and concise content.",
         expectedOutput: `Product Requirements Document: Smart Study Planner
 
 Problem Statement:
@@ -711,7 +711,7 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
             return {
                 roundNumber: 4,
                 type: "OPTIMIZE",
-                instruction: "Write a self-contained prompt of 30 words or fewer. It must name a concept and an analogy, and make the AI explain the concept using that analogy in at least 50 words.",
+                instruction: "Write an optimized prompt that will explain any concept using an analogy of your choice.",
                 referenceExample: `Example only: "Explain recursion using a cooking recipe analogy."`,
                 constraints: { maxPromptWords: 30, minOutputWords: 50 },
             };
@@ -720,7 +720,7 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
             return {
                 roundNumber: 5,
                 type: "STRUCTURED",
-                instruction: "Design a prompt that forces the AI to think step-by-step and produce a structured solution.",
+                instruction: "Design a prompt that forces the AI to think step-by-step and produce a structured solution of the puzzle given below",
                 ...s,
             };
         }
@@ -729,7 +729,7 @@ export function getAdminPreviewRound(roundNumber: number, setIndex: number): Rou
             return {
                 roundNumber: 6,
                 type: "BONUS",
-                instruction: "Read the scenario below — it is the text the generated prompt will analyse. Write a meta-prompt that instructs an AI to create a prompt that turns that scenario into a BI-style report with stats, analysis, insights, and recommended actions.",
+                instruction: "Write a meta-prompt that instructs an AI to create a prompt that turns that scenario into a BI-style report. The sections of the report must be identified based on the input given.",
                 ...s,
             };
         }
@@ -771,7 +771,7 @@ export function generateRounds(sessionId: string): Round[] {
             roundNumber: 4,
             type: "OPTIMIZE",
             instruction:
-                "Write a self-contained prompt of 30 words or fewer. It must name a concept and an analogy, and make the AI explain the concept using that analogy in at least 50 words.",
+                "Write an optimized prompt that will explain any concept of your choice using an analogy of your choice.",
             referenceExample:
                 "Example only: \"Explain recursion using a cooking recipe analogy.\"",
             constraints: { maxPromptWords: 30, minOutputWords: 50 },

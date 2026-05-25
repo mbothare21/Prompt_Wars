@@ -164,13 +164,6 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-const OPTIMIZE_GUIDANCE = [
-  "Write one self-contained prompt that names both a concept and an analogy.",
-  "Your prompt must stay at 30 words or fewer.",
-  "The AI output must be at least 50 words.",
-  "Optimize for clarity and control, not for copying a sample answer.",
-];
-
 export default function GameUI() {
   const [phase, setPhase] = useState<GamePhase>("splash");
   const [player, setPlayer] = useState({ name: "", email: "" });
@@ -1069,7 +1062,9 @@ export default function GameUI() {
         setError(
           typeof data.message === "string"
             ? data.message
-            : "Evaluation system unavailable. Please retry."
+            : currentRoundData?.type === "BONUS"
+              ? "Evaluation system unavailable. Please Re-Submit."
+              : "Evaluation system unavailable. Please retry."
         );
         await refreshRound(sid);
         return;
@@ -1310,7 +1305,11 @@ export default function GameUI() {
         return;
       }
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(
+        currentRoundData?.type === "BONUS"
+          ? "Something went wrong. Please Re-Submit."
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setBusy(false);
       submittingRef.current = false;
@@ -1428,64 +1427,56 @@ export default function GameUI() {
 
     if (r1Entries.length > 0) {
       const singleAttempt = r1Entries.length === 1;
-      const worstAttempt = r1Entries.reduce((w, r) => r.score < w.score ? r : w, r1Entries[0]);
-      const displayPct = Math.round(worstAttempt.score * 100);
-      const r1ScoreColor = displayPct >= 70 ? "#16a34a" : "#dc2626";
       const r1Label = ROUND_TYPE_LABELS[1] ?? "Classification";
       const r1Tip = tips?.[1] ?? IMPROVEMENT_TIPS_HTML[r1Label] ?? "Review classification boundaries carefully.";
+      const worstPct = Math.round(Math.min(...r1Entries.map((r) => r.score)) * 100);
+      const r1ScoreColor = worstPct >= 70 ? "#16a34a" : "#dc2626";
 
-      // Show only the worst attempt (or single attempt); not all attempts
-      const displayAttempt = singleAttempt ? r1Entries[0] : worstAttempt;
-      const parsed = parseClassifyOutput(displayAttempt.output);
-
-      let choicesHtml = "";
-      if (parsed?.details?.length) {
-        choicesHtml = parsed.details.map((d: ClassifyDetail) => `
-          <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:6px 8px;border-radius:4px;background:${d.isCorrect ? "#f0fdf4" : "#fef2f2"};border:1px solid ${d.isCorrect ? "#bbf7d0" : "#fecaca"};">
-            <span style="font-size:12px;flex-shrink:0;margin-top:1px;">${d.isCorrect ? "&#10003;" : "&#10007;"}</span>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;color:#64748b;margin-bottom:2px;">${d.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
-              <div style="font-size:12px;">
-                <span style="color:${d.isCorrect ? "#15803d" : "#b91c1c"};font-weight:600;">${(d.chosen ?? "No answer").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>
-                ${!d.isCorrect ? ` <span style="color:#94a3b8;font-size:11px;">&rarr; Correct: <strong style="color:#15803d;">${d.correct.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</strong></span>` : ""}
+      const allAttemptsHtml = r1Entries.map((attemptEntry, idx) => {
+        const parsed = parseClassifyOutput(attemptEntry.output);
+        const pct = Math.round(attemptEntry.score * 100);
+        const passed = pct >= 100;
+        let choicesHtml = "";
+        if (parsed?.details?.length) {
+          choicesHtml = parsed.details.map((d: ClassifyDetail) => `
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding:6px 8px;border-radius:4px;background:${d.isCorrect ? "#f0fdf4" : "#fef2f2"};border:1px solid ${d.isCorrect ? "#bbf7d0" : "#fecaca"};">
+              <span style="font-size:12px;flex-shrink:0;margin-top:1px;">${d.isCorrect ? "&#10003;" : "&#10007;"}</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:11px;color:#64748b;margin-bottom:2px;">${d.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+                <div style="font-size:12px;">
+                  <span style="color:${d.isCorrect ? "#15803d" : "#b91c1c"};font-weight:600;">${(d.chosen ?? "No answer").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>
+                  ${!d.isCorrect ? ` <span style="color:#94a3b8;font-size:11px;">&rarr; Correct: <strong style="color:#15803d;">${d.correct.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</strong></span>` : ""}
+                </div>
               </div>
+            </div>`).join("");
+        } else {
+          choicesHtml = `<pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap;word-wrap:break-word;margin:0;">${formatPrompt(attemptEntry.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+        }
+        return `
+          <div style="border:1px solid ${passed ? "#bbf7d0" : "#fecaca"};border-radius:6px;padding:12px;margin-bottom:8px;background:${passed ? "#f0fdf4" : "#fff5f5"};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-size:12px;font-weight:700;color:${passed ? "#15803d" : "#dc2626"};">Attempt ${idx + 1}</span>
+              <span style="font-size:12px;font-weight:700;color:${pct >= 70 ? "#16a34a" : "#dc2626"};">${pct}%</span>
             </div>
-          </div>`).join("");
-      } else {
-        choicesHtml = `<pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap;word-wrap:break-word;margin:0;">${formatPrompt(displayAttempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
-      }
-
-      const attemptBoxBorder = singleAttempt ? "#e2e8f0" : "#fecaca";
-      const attemptBoxBg = singleAttempt ? "#f8fafc" : "#fff5f5";
-      const attemptLabel = singleAttempt
-        ? "Single Attempt"
-        : `Attempt ${displayAttempt.attempts ?? "?"} — Worst Attempt`;
-      const attemptLabelColor = singleAttempt ? "#64748b" : "#dc2626";
-
-      const attemptsDetailHtml = `
-        <div style="border:1px solid ${attemptBoxBorder};border-radius:6px;padding:12px;margin-bottom:8px;background:${attemptBoxBg};">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-size:12px;font-weight:700;color:${attemptLabelColor};">${attemptLabel}</span>
-            <span style="font-size:12px;font-weight:700;color:${displayPct >= 70 ? "#16a34a" : "#dc2626"};">${displayPct}%</span>
-          </div>
-          ${choicesHtml}
-        </div>`;
+            ${choicesHtml}
+          </div>`;
+      }).join("");
 
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
             <h3 style="margin:0;color:#0891b2;font-size:14px;">Round 1: ${r1Label}</h3>
             <div style="display:flex;gap:12px;font-size:12px;color:#64748b;align-items:center;">
-              <span>Worst Score: <strong style="color:${r1ScoreColor}">${displayPct}%</strong></span>
+              <span>Worst Score: <strong style="color:${r1ScoreColor}">${worstPct}%</strong></span>
               <span>Attempts: <strong>${r1Entries.length}</strong></span>
-              ${singleAttempt && displayPct >= 100 ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #bbf7d0;">First Attempt Pass</span>' : ""}
+              ${singleAttempt && worstPct >= 100 ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #bbf7d0;">First Attempt Pass</span>' : ""}
             </div>
           </div>
-          ${attemptsDetailHtml}
+          ${allAttemptsHtml}
           ${r1Tip ? `
           <div style="margin-top:8px;">
-            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tips</div>
-            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;">${r1Tip}</div>
+            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Why It Fell Short</div>
+            <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${r1Tip}</div>
           </div>` : ""}
         </div>`;
     }
@@ -1500,17 +1491,17 @@ export default function GameUI() {
 
     for (const [roundNum, roundAttempts] of Array.from(otherRoundGroups.entries()).sort(([a], [b]) => a - b)) {
       const sortedAttempts = [...roundAttempts].sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0));
-      const passingAttempt = sortedAttempts[sortedAttempts.length - 1];
+      const finalAttempt = sortedAttempts[sortedAttempts.length - 1];
       const totalAttempts = sortedAttempts.length;
-      const pct = Math.round(passingAttempt.score * 100);
+      const finalPct = Math.round(finalAttempt.score * 100);
       const label = ROUND_TYPE_LABELS[roundNum] ?? "Unknown";
       const tip = tips?.[roundNum] ?? IMPROVEMENT_TIPS_HTML[label] ?? "Review the round instructions carefully.";
-      const scoreColor = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+      const finalScoreColor = finalPct >= 70 ? "#16a34a" : finalPct >= 50 ? "#d97706" : "#dc2626";
 
       // Round 6 (BONUS): special layout showing meta-prompt + generated prompt separately
       if (roundNum === 6) {
-        const bonusPrompt = passingAttempt.prompt as { metaPrompt?: string; compiledPrompt?: string } | null;
-        const metaPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.metaPrompt) ? bonusPrompt.metaPrompt : formatPrompt(passingAttempt.prompt);
+        const bonusPrompt = finalAttempt.prompt as { metaPrompt?: string; compiledPrompt?: string } | null;
+        const metaPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.metaPrompt) ? bonusPrompt.metaPrompt : formatPrompt(finalAttempt.prompt);
         const compiledPromptText = (typeof bonusPrompt === "object" && bonusPrompt?.compiledPrompt) ? bonusPrompt.compiledPrompt : null;
         const bonusTip = tips?.[6] ?? IMPROVEMENT_TIPS_HTML[ROUND_TYPE_NAMES.BONUS] ?? "State exactly what the generated prompt should make the AI do and what the final answer should look like.";
         roundsHtml += `
@@ -1518,7 +1509,7 @@ export default function GameUI() {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
               <h3 style="margin:0;color:#7c3aed;font-size:14px;">Round 6: ${label} (Bonus)</h3>
               <div style="display:flex;gap:16px;font-size:12px;color:#64748b;align-items:center;">
-                <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
+                <span>Score: <strong style="color:${finalScoreColor}">${finalPct}%</strong></span>
                 <span>Attempts: <strong>1</strong></span>
               </div>
             </div>
@@ -1531,44 +1522,56 @@ export default function GameUI() {
               <div style="font-size:11px;color:#0891b2;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Generated Prompt (compiled by AI from meta-prompt)</div>
               <pre style="background:#0c1a2e;color:#93c5fd;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:250px;overflow-y:auto;border:1px solid #1e3a5f;">${compiledPromptText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
             </div>` : ""}
-            ${passingAttempt.output ? `
+            ${finalAttempt.output ? `
             <div style="margin-bottom:8px;">
               <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
-              <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${passingAttempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+              <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${finalAttempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
             </div>` : ""}
             <div style="margin-top:8px;">
-              <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Meta-Prompt Improvement Tips</div>
+              <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Why It Fell Short</div>
               <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${bonusTip}</div>
-              <div style="margin-top:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px;font-size:11px;color:#0c4a6e;line-height:1.6;">
-                <strong>How this helps:</strong> A stronger meta-prompt gives the AI clearer instructions about role, structure, and constraints — which results in a more precise generated prompt and ultimately a higher-quality final output.
-              </div>
             </div>
           </div>`;
         continue;
       }
+
+      // Rounds 2–5: show every attempt as a numbered card
+      const attemptsCardsHtml = sortedAttempts.map((attempt, idx) => {
+        const aPct = Math.round(attempt.score * 100);
+        const aColor = aPct >= 70 ? "#16a34a" : aPct >= 50 ? "#d97706" : "#dc2626";
+        const aBorderColor = aPct >= 70 ? "#bbf7d0" : aPct >= 50 ? "#fde68a" : "#fecaca";
+        const aBgColor = aPct >= 70 ? "#f0fdf4" : aPct >= 50 ? "#fffbeb" : "#fff5f5";
+        const isLast = idx === sortedAttempts.length - 1;
+        return `
+          <div style="border:1px solid ${aBorderColor};border-radius:6px;padding:12px;margin-bottom:8px;background:${aBgColor};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-size:12px;font-weight:700;color:${aColor};">Attempt ${idx + 1}${isLast && totalAttempts > 1 ? " (Final)" : ""}</span>
+              <span style="font-size:12px;font-weight:700;color:${aColor};">${aPct}%</span>
+            </div>
+            <div style="margin-bottom:6px;">
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Prompt</div>
+              <pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:200px;overflow-y:auto;">${formatPrompt(attempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            </div>
+            ${attempt.output ? `
+            <div>
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
+              <pre style="background:#f8fafc;color:#374151;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;">${attempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+            </div>` : ""}
+          </div>`;
+      }).join("");
 
       roundsHtml += `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
             <h3 style="margin:0;color:#0891b2;font-size:14px;">Round ${roundNum}: ${label}</h3>
             <div style="display:flex;gap:16px;font-size:12px;color:#64748b;align-items:center;">
-              <span>Score: <strong style="color:${scoreColor}">${pct}%</strong></span>
+              <span>Final Score: <strong style="color:${finalScoreColor}">${finalPct}%</strong></span>
               <span>Attempts: <strong>${totalAttempts}</strong></span>
             </div>
           </div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
-              ${totalAttempts > 1 ? `Passing Attempt (Attempt ${passingAttempt.attempts ?? totalAttempts})` : "Player Prompt"}
-            </div>
-            <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;">${formatPrompt(passingAttempt.prompt).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
-          </div>
-          ${passingAttempt.output ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">AI Output</div>
-            <pre style="background:#f0fdf4;color:#14532d;padding:12px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-wrap:break-word;margin:0;max-height:300px;overflow-y:auto;border:1px solid #bbf7d0;">${passingAttempt.output.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
-          </div>` : ""}
+          ${attemptsCardsHtml}
           <div style="margin-top:8px;">
-            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Improvement Tips</div>
+            <div style="font-size:11px;color:#b45309;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Why It Fell Short</div>
             <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;font-size:12px;color:#78350f;line-height:1.6;white-space:pre-wrap;">${tip}</div>
           </div>
         </div>`;
@@ -1718,6 +1721,7 @@ export default function GameUI() {
     ? "Hint unlocks after your first attempt"
     : "Hint available after 2 attempts";
   const showHintCloud = hintAvailable && hintOpen;
+  const showHintNudge = hintAvailable && !hintOpen;
 
   return (
     <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
@@ -1851,21 +1855,6 @@ export default function GameUI() {
                                 <div className="font-mono text-xs text-emerald-300/80 whitespace-pre-wrap">
                                   {previewRound.referenceExample}
                                 </div>
-                              </div>
-                            )}
-
-                            {previewRound.type === "OPTIMIZE" && (
-                              <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
-                                <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                                  Scoring Focus
-                                </h3>
-                                <ul className="list-square list-inside font-mono text-xs text-green-400/80 space-y-2">
-                                  {OPTIMIZE_GUIDANCE.map((note) => (
-                                    <li key={note} className="pl-2 border-l border-green-900/40 ml-1">
-                                      {note}
-                                    </li>
-                                  ))}
-                                </ul>
                               </div>
                             )}
 
@@ -2501,12 +2490,16 @@ export default function GameUI() {
                 {/* HINT CLOUD */}
                 {(roundNumber >= 1 && roundNumber <= 6) && (
                   <div className="relative">
+                    {showHintNudge && (
+                      <div className="absolute -top-10 right-0 z-20 whitespace-nowrap rounded-full border border-amber-500/60 bg-amber-950/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-300 shadow-[0_0_18px_rgba(245,158,11,0.25)]">
+                        Need a hint?
+                      </div>
+                    )}
                     <button
                       onClick={() => hintAvailable ? setHintOpen((o) => !o) : undefined}
                       disabled={!hintAvailable}
                       className={`text-xl transition-transform ${hintAvailable ? "hover:scale-110 opacity-70 hover:opacity-100 cursor-pointer" : "opacity-25 cursor-not-allowed"} ${showHintCloud ? "opacity-100" : ""}`}
                       aria-label={hintAvailable ? "Toggle hint" : hintDisabledTooltip}
-                      title={hintAvailable ? "Need a hint? Click to view" : hintDisabledTooltip}
                     >
                       💡
                     </button>
@@ -2588,6 +2581,7 @@ export default function GameUI() {
                             <p className="text-amber-400/80 font-bold mt-3 mb-1">How to write one:</p>
                             <p>✦ Tell the AI what <span className="text-cyan-400">role, tone, and sections</span> the final prompt must include</p>
                             <p>✦ Specify <span className="text-cyan-400">output constraints</span> the final prompt should enforce (length, format, structure)</p>
+                            <p>✦ Look for <span className="text-cyan-400">hidden constraints</span> in the input data and make the generated prompt account for them</p>
                             <p>✦ Think: what would a <span className="text-cyan-400">perfect prompt</span> for this scenario contain? Then instruct the AI to build exactly that</p>
                             <p>✦ The more <span className="text-cyan-400">specific and detailed</span> your meta-prompt, the stronger the compiled prompt will be</p>
                           </div>
@@ -2676,21 +2670,6 @@ export default function GameUI() {
                       <div className="font-mono text-xs text-emerald-300/80 whitespace-pre-wrap">
                         {currentRoundData.referenceExample}
                       </div>
-                    </div>
-                  )}
-
-                  {currentRoundData.type === "OPTIMIZE" && (
-                    <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
-                      <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                        Scoring Focus
-                      </h3>
-                      <ul className="list-square list-inside font-mono text-xs text-green-400/80 space-y-2">
-                        {OPTIMIZE_GUIDANCE.map((note) => (
-                          <li key={note} className="pl-2 border-l border-green-900/40 ml-1">
-                            {note}
-                          </li>
-                        ))}
-                      </ul>
                     </div>
                   )}
 
@@ -2796,7 +2775,7 @@ export default function GameUI() {
                     ) : (
                       <>
                         {currentRoundData.type === "OPTIMIZE" && (
-                          <div className="flex justify-end">
+                          <div className="flex justify-end mb-2">
                             <div
                               className={`text-[11px] font-mono font-bold px-2 py-1 rounded border ${
                                 countWords(promptInput) > 30
@@ -2956,12 +2935,17 @@ export default function GameUI() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: title + score + close */}
-            <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${previousAttempt.isPassed ? "border-green-900/50" : previousAttempt.isForceAdvanced ? "border-amber-900/50" : "border-slate-800"}`}>
+            <div className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${previousAttempt.isPassed ? "border-green-900/50" : (previousAttempt.isForceAdvanced || (previousAttempt.classifyDetails && previousAttempt.isForceAdvanced)) ? "border-amber-900/50" : "border-slate-800"}`}>
               <div className="flex items-center gap-4">
                 {previousAttempt.isPassed ? (
                   <h2 className="text-sm font-mono font-bold text-green-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
                     {pendingFinish ? "Round Complete — AI Response" : "Round Passed — AI Response"}
+                  </h2>
+                ) : previousAttempt.classifyDetails && previousAttempt.isForceAdvanced ? (
+                  <h2 className="text-sm font-mono font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Attempts Exhausted — Correct Answers Revealed
                   </h2>
                 ) : previousAttempt.classifyDetails ? (
                   <h2 className="text-sm font-mono font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
@@ -3014,6 +2998,12 @@ export default function GameUI() {
             {/* Content: classify details or raw AI output */}
             {previousAttempt.classifyDetails ? (
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
+                {previousAttempt.isForceAdvanced && (
+                  <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded text-xs font-mono text-amber-300 flex items-start gap-2">
+                    <span>⚠️</span>
+                    <span>All attempts used. The correct answers are shown below.</span>
+                  </div>
+                )}
                 {previousAttempt.classifyDetails.map((d) => (
                   <div key={d.id} className={`p-3 rounded border ${d.isCorrect ? "border-green-800/60 bg-green-950/30" : "border-red-800/60 bg-red-950/30"}`}>
                     <p className="text-[11px] font-mono text-slate-400 mb-2 line-clamp-3 leading-relaxed">{d.text}</p>
@@ -3021,6 +3011,11 @@ export default function GameUI() {
                       <span className={`font-bold ${d.isCorrect ? "text-green-400" : "text-red-400"}`}>
                         {d.isCorrect ? "✓" : "✗"} Your answer: {d.chosen ?? "No answer"}
                       </span>
+                      {!d.isCorrect && previousAttempt.isForceAdvanced && (
+                        <span className="text-green-400 font-bold">
+                          → Correct: {d.correct}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

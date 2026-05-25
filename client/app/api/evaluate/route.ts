@@ -261,8 +261,8 @@ export async function POST(req: Request) {
       status: timeout ? "EVALUATION_TIMEOUT" : "EVALUATION_ERROR",
       retryable: true,
       message: timeout
-        ? "Evaluation took too long. Please retry."
-        : "Evaluation failed. Please retry.",
+        ? "Evaluation took too long. Please Re-Submit."
+        : "Evaluation failed. Please Re-Submit.",
     });
   }
 

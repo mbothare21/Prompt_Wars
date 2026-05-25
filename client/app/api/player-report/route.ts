@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/gameStore";
 import { toAdminPlayerExport, type RawAdminPlayerDoc } from "@/lib/adminPlayers";
-import { generateRoundTips } from "@/lib/roundTips";
+import { generateRoundTips, type RoundContext } from "@/lib/roundTips";
+import { getRounds } from "@/lib/roundsStore";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
 
@@ -51,7 +52,24 @@ export async function GET(req: Request) {
     }
 
     const player = toAdminPlayerExport(doc);
-    const tips = await generateRoundTips(player.rounds);
+
+    const roundContexts: Record<number, RoundContext> = {};
+    if (sessionId) {
+      try {
+        const rounds = getRounds(sessionId);
+        for (const r of rounds) {
+          roundContexts[r.roundNumber] = {
+            instruction: r.instruction ?? null,
+            input: r.input ?? null,
+            expectedOutput: r.expectedOutput ?? null,
+          };
+        }
+      } catch {
+        // No context available — tips will be generated without it
+      }
+    }
+
+    const tips = await generateRoundTips(player.rounds, roundContexts);
     return Response.json({ player, tips });
   } catch (e) {
     console.error("[player-report]", e);
