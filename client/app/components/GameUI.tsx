@@ -663,11 +663,12 @@ export default function GameUI() {
 
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") return;
+    if (busy) return;
     const id = window.setInterval(() => {
       tickCountdown();
     }, 1000);
     return () => window.clearInterval(id);
-  }, [phase]);
+  }, [phase, busy]);
 
   useEffect(() => {
     if (phase !== "playing" && phase !== "bonus") return;
@@ -1338,6 +1339,7 @@ export default function GameUI() {
   const currentAccuracy = lastResult ? Math.min(100, Math.max(0, lastResult.score)) : 0;
   const bonusPromptReady =
     currentRoundData?.type !== "BONUS" || Boolean(generatedPrompt);
+  const timerPaused = busy && (phase === "playing" || phase === "bonus");
 
   const ROUND_TYPE_LABELS: Record<number, string> = {
     1: ROUND_TYPE_NAMES.CLASSIFY,
@@ -2589,12 +2591,17 @@ export default function GameUI() {
                 )}
 
                 <div
-                  className={`text-2xl md:text-3xl font-mono font-bold px-4 py-1 rounded border ${timeLeftSec < 60
+                  className={`text-2xl md:text-3xl font-mono font-bold px-4 py-1 rounded border flex items-center gap-3 ${timeLeftSec < 60
                       ? "text-red-500 bg-red-950/30 border-red-900/50 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]"
                       : "text-amber-500 bg-amber-950/20 border-amber-900/30 drop-shadow-[0_0_5px_rgba(245,158,11,0.4)]"
                     }`}
                 >
-                  {formatTime(timeLeftSec)}
+                  <span>{formatTime(timeLeftSec)}</span>
+                  {timerPaused && (
+                    <span className="text-[10px] uppercase tracking-[0.25em] font-bold px-2 py-1 rounded border border-cyan-900/60 bg-cyan-950/30 text-cyan-300">
+                      Paused
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

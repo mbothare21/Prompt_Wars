@@ -118,6 +118,13 @@ export async function POST(req: Request) {
   const roundNum = session.currentRound;
   const round = session.rounds[roundNum - 1];
   const totalRounds = session.rounds.length;
+  const evaluationStartedAt = Date.now();
+  let evaluationPauseCommitted = false;
+  const commitEvaluationPause = () => {
+    if (evaluationPauseCommitted) return;
+    session.startTime += Date.now() - evaluationStartedAt;
+    evaluationPauseCommitted = true;
+  };
 
   if (round.type === "CLASSIFY") {
     if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
@@ -232,6 +239,7 @@ export async function POST(req: Request) {
           evaluateRound(round, prompt ?? "", answers)
         );
   } catch (error) {
+    commitEvaluationPause();
     const attemptsUsed = session.attemptsPerRound[roundNum] ?? 0;
     if (attemptsUsed <= 1) {
       delete session.attemptsPerRound[roundNum];
@@ -264,6 +272,7 @@ export async function POST(req: Request) {
     finalScore = Math.min(1, finalScore * 1.5);
     progress = Math.round(finalScore * 100);
   }
+  commitEvaluationPause();
 
   // For Round 1 (CLASSIFY), apply a 5% penalty per failed attempt to the stored score.
   // This affects reports and leaderboard averages only — the pass threshold still uses raw score.
