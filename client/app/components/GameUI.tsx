@@ -2785,9 +2785,6 @@ export default function GameUI() {
                           )}
                         </div>
 
-                        <div className="bg-amber-950/20 border border-amber-900/40 rounded p-3 text-[11px] text-amber-200/80 font-mono leading-relaxed">
-                          Only your meta-prompt is submitted. The system will compile and execute the resulting prompt against the scenario in a single scored attempt.
-                        </div>
                       </div>
                     ) : (
                       <>
