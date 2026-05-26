@@ -1724,7 +1724,7 @@ export default function GameUI() {
   const showHintNudge = hintAvailable && !hintOpen;
 
   return (
-    <div className={`${["splash","welcome","instructions","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-y-auto" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
+    <div className={`${phase === "instructions" ? "min-h-screen" : ["splash","welcome","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-hidden" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
 
       {/* Global Vignette and Scanlines */}
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>
@@ -2115,32 +2115,32 @@ export default function GameUI() {
         </div>
       )}
 
-      {/* STEP 2: INSTRUCTIONS PAGE */}      
+      {/* STEP 2: INSTRUCTIONS PAGE */}
       {phase === "instructions" && (
-        <div className="w-full max-w-5xl terminal-panel p-8 md:p-12 rounded-xl relative">
+        <div className="w-full max-w-5xl terminal-panel p-5 md:p-8 lg:p-12 rounded-xl relative my-4 md:my-8">
           <div className="screen-glare absolute inset-0 rounded-xl" />
 
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-8 border-b border-slate-700 pb-6">
+            <div className="flex items-center justify-between mb-5 md:mb-8 border-b border-slate-700 pb-4 md:pb-6">
               <div>
-                <h1 className="text-3xl font-black text-amber-500 flex items-center gap-3 uppercase tracking-wider drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">
+                <h1 className="text-xl md:text-3xl font-black text-amber-500 flex items-center gap-2 md:gap-3 uppercase tracking-wider drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">
                   ⚠️ Game Rules
                 </h1>
-                <p className="text-slate-400 mt-2 text-sm font-mono tracking-wide">Please read the rules before starting.</p>
+                <p className="text-slate-400 mt-1 md:mt-2 text-xs md:text-sm font-mono tracking-wide">Please read the rules before starting.</p>
               </div>
-              <button onClick={() => setPhase("welcome")} className="text-slate-500 hover:text-slate-300 text-xs font-bold uppercase tracking-widest transition-colors font-mono">
+              <button onClick={() => setPhase("welcome")} className="text-slate-500 hover:text-slate-300 text-xs font-bold uppercase tracking-widest transition-colors font-mono shrink-0 ml-4">
                 ← Back
               </button>
             </div>
 
-            <div className="space-y-6 text-sm font-sans">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3 md:space-y-6 text-xs md:text-sm font-sans">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
 
-                <section className="bg-black/50 p-6 rounded border border-red-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-                  <h2 className="text-md font-mono font-bold text-red-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-red-900/30 pb-2">
+                <section className="bg-black/50 p-4 md:p-6 rounded border border-red-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                  <h2 className="text-xs md:text-sm font-mono font-bold text-red-500 mb-3 md:mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-red-900/30 pb-2">
                     ⏱️ Timer
                   </h2>
-                  <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
+                  <ul className="list-square list-inside space-y-1.5 md:space-y-2 text-slate-400 ml-1">
                     <li>You have <strong className="text-slate-200">20 minutes total</strong> for all rounds.</li>
                     <li>Timer starts when you begin the game.</li>
                     <li>The timer <strong className="text-red-400 font-bold">CANNOT BE PAUSED</strong>.</li>
@@ -2148,11 +2148,11 @@ export default function GameUI() {
                   </ul>
                 </section>
 
-                <section className="bg-black/50 p-6 rounded border border-amber-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-                  <h2 className="text-md font-mono font-bold text-amber-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-amber-900/30 pb-2">
+                <section className="bg-black/50 p-4 md:p-6 rounded border border-amber-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                  <h2 className="text-xs md:text-sm font-mono font-bold text-amber-500 mb-3 md:mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-amber-900/30 pb-2">
                     🔁 Attempt Limits
                   </h2>
-                  <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
+                  <ul className="list-square list-inside space-y-1.5 md:space-y-2 text-slate-400 ml-1">
                     <li>Rounds 1–4 allow <strong className="text-slate-200">3 attempts</strong> each. Round 5 allows <strong className="text-slate-200">2 attempts</strong>, and the bonus round allows <strong className="text-slate-200">1 submission</strong>.</li>
                     <li>You <strong className="text-green-400 font-bold">always advance</strong> to the next round — exhausting attempts does not end the game.</li>
                     <li>If you don&apos;t clear the required score threshold, that round is recorded as <strong className="text-slate-200">0%</strong> in your final accuracy.</li>
@@ -2160,22 +2160,22 @@ export default function GameUI() {
                   </ul>
                 </section>
 
-                <section className="bg-black/50 p-6 rounded border border-purple-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-                  <h2 className="text-md font-mono font-bold text-purple-400 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-purple-900/30 pb-2">
+                <section className="bg-black/50 p-4 md:p-6 rounded border border-purple-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                  <h2 className="text-xs md:text-sm font-mono font-bold text-purple-400 mb-3 md:mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-purple-900/30 pb-2">
                     🚫 Fair Play Rules
                   </h2>
-                  <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
+                  <ul className="list-square list-inside space-y-1.5 md:space-y-2 text-slate-400 ml-1">
                     <li>Switching tabs is <strong className="text-purple-400 font-bold">STRICTLY PROHIBITED</strong>.</li>
                     <li>Each violation deducts <strong className="text-slate-200">15 seconds</strong> from your timer.</li>
                     <li>Copy/Paste is disabled in the prompt input.</li>
                   </ul>
                 </section>
 
-                <section className="bg-black/50 p-6 rounded border border-cyan-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-                  <h2 className="text-md font-mono font-bold text-cyan-500 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
+                <section className="bg-black/50 p-4 md:p-6 rounded border border-cyan-900/30 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                  <h2 className="text-xs md:text-sm font-mono font-bold text-cyan-500 mb-3 md:mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
                     🔒 Persistence Rules
                   </h2>
-                  <ul className="list-square list-inside space-y-2 text-slate-400 ml-1">
+                  <ul className="list-square list-inside space-y-1.5 md:space-y-2 text-slate-400 ml-1">
                     <li>Enter your <strong className="text-slate-200">real full name</strong> and approved <strong className="text-slate-200">@calfus.com</strong> email to start.</li>
                     <li><strong className="text-slate-200">One attempt</strong> per player.</li>
                     <li>Refreshing the page will <strong className="text-cyan-600 font-bold">NOT</strong> reset the timer.</li>
@@ -2184,24 +2184,24 @@ export default function GameUI() {
                 </section>
               </div>
 
-              <section className="bg-slate-900/40 p-6 rounded border border-green-900/50 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] mt-4">
-                <h2 className="text-sm font-mono font-bold text-green-500 mb-4 uppercase tracking-widest">
+              <section className="bg-slate-900/40 p-4 md:p-6 rounded border border-green-900/50 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                <h2 className="text-xs md:text-sm font-mono font-bold text-green-500 mb-3 md:mb-4 uppercase tracking-widest">
                   🏆 Evaluation Matrix Ranking Order
                 </h2>
-                <div className="flex flex-col md:flex-row gap-3 font-mono text-[10px] text-green-400 uppercase tracking-widest text-center">
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">1. Rounds Reached</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">2. Accuracy + Speed Composite</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">3. Fewer Attempts / Round</div>
-                  <div className="flex-1 bg-green-950/20 p-3 rounded border border-green-900/50">4. Deterministic Tie-Break</div>
+                <div className="grid grid-cols-2 md:flex md:flex-row gap-2 md:gap-3 font-mono text-[9px] md:text-[10px] text-green-400 uppercase tracking-widest text-center">
+                  <div className="flex-1 bg-green-950/20 p-2 md:p-3 rounded border border-green-900/50">1. Rounds Reached</div>
+                  <div className="flex-1 bg-green-950/20 p-2 md:p-3 rounded border border-green-900/50">2. Accuracy + Speed</div>
+                  <div className="flex-1 bg-green-950/20 p-2 md:p-3 rounded border border-green-900/50">3. Fewer Attempts</div>
+                  <div className="flex-1 bg-green-950/20 p-2 md:p-3 rounded border border-green-900/50">4. Tie-Break</div>
                 </div>
               </section>
 
-              <div className="flex flex-col items-center justify-center pt-8 mt-6 border-t border-slate-800">
-                <p className="text-amber-500/80 text-xs font-mono uppercase tracking-widest mb-6 animate-pulse">I have read and understood the rules. Proceed to registration.</p>
+              <div className="flex flex-col items-center justify-center pt-5 md:pt-8 mt-4 md:mt-6 border-t border-slate-800">
+                <p className="text-amber-500/80 text-[10px] md:text-xs font-mono uppercase tracking-widest mb-4 md:mb-6 animate-pulse text-center">I have read and understood the rules. Proceed to registration.</p>
                 <button
                   type="button"
                   onClick={() => setPhase("register")}
-                  className="group relative px-16 py-4 bg-green-700 hover:bg-green-600 border border-green-400 text-green-50 font-mono font-bold text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(21,128,61,0.4)] hover:shadow-[0_0_30px_rgba(21,128,61,0.6)]"
+                  className="group relative w-full sm:w-auto px-10 md:px-16 py-3 md:py-4 bg-green-700 hover:bg-green-600 border border-green-400 text-green-50 font-mono font-bold text-base md:text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(21,128,61,0.4)] hover:shadow-[0_0_30px_rgba(21,128,61,0.6)]"
                 >
                   Proceed
                 </button>
