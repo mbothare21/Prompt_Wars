@@ -104,7 +104,7 @@ const ROUND_2_SETS = [
     // ── Set 1 (Original — Product Launch Strategy) ────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract structured highlights which include Decisions, Key Conflicts and Trade Offs, Risks and Dependencies, Unknown Gaps and Next Steps. Use only the input data, do not add information of your own and keep the output summary ≤200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract structured highlights which include Decisions, Key Conflicts and Trade Offs, Risks and Dependencies, Unknown Gaps and Next Steps. Use only the input data, do not add information of your own and the output summary should not contain more than 200 words.",
         originalPrompt: "Summarize this",
         input: `The quarterly strategy meeting for the upcoming product launch was held on Monday and brought together stakeholders from product management, marketing, operations, customer success, and regional sales teams. While the meeting was initially intended to finalize the launch timeline and align on execution priorities, it quickly became evident that there were several unresolved dependencies and differing viewpoints that prevented clear decision-making.
 
@@ -159,7 +159,7 @@ Assign ownership for risks, QA, and supply chain mitigation
     // ── Set 2 (Customer Retention Review) ─────────────────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights which identify Conflicts, Decisions made, Dependencies, Risks, Next steps. Use only the input data, do not add information of your own and keep the output summary should not contain more than 200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to extract key business insights which identify Conflicts, Decisions made, Dependencies, Risks, Next steps. Use only the input data, do not add information of your own and the output summary should not contain more than 200 words.",
         originalPrompt: "Give me the key points",
         input: `The quarterly strategy review meeting focused heavily on the growing concerns around customer retention and declining renewal rates in the company's subscription business. Marketing leadership argued that customers were abandoning the platform because the onboarding experience was confusing and lacked clear activation milestones. They pointed to survey feedback indicating that many users did not fully understand the platform's value during their first two weeks.
 
@@ -199,7 +199,7 @@ Conduct churn analysis, redesign onboarding, review feature adoption metrics.`,
     // ── Set 3 (Operational Review — Support Delays) ───────────────────
     {
         instruction:
-            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary which identifies Conflicts, Decisions made, Dependencies, Risks, Next steps. Use only the input data, do not add information of your own and keep the output summary should not contain more than 200 words.",
+            "The original prompt below was given to the AI, but it did not produce an ideal output. Your task is to improve this prompt to generate a concise operational summary which identifies Conflicts, Decisions made, Dependencies, Risks, Next steps. Use only the input data, do not add information of your own and the output summary should not contain more than 200 words.",
         originalPrompt: "Tell me the important parts",
         input: `During the monthly operational review meeting, leadership teams discussed recurring delays in customer issue resolution and growing dissatisfaction among enterprise accounts. Support leadership argued that engineering response times had slowed considerably, resulting in unresolved customer escalations and longer turnaround times. They presented examples where urgent customer incidents remained open for several days because technical investigations were delayed.
 
@@ -334,7 +334,7 @@ Introduce automated rollback triggers, improve deployment validation, and streng
 
     // ── Set 3 (Smart Study Planner PRD) ───────────────────────────────
     {
-        instruction: "Write a prompt that will generate a Product Requirements Document given below. The output should be a structured with clear sections and concise content.",
+        instruction: "Write a prompt that will generate the Product Requirements Document given below. The output should be a structured with clear sections and concise content.",
         expectedOutput: `Product Requirements Document: Smart Study Planner
 
 Problem Statement:
@@ -504,7 +504,7 @@ Best regards,
 Program Analytics Team`,
             promptChecks: [
                 { label: "BI report framing", test: (t) => /\b(report|dashboard|brief|summary)\b/i.test(t) && /\b(bi|business intelligence|insights|metrics)\b/i.test(t) },
-                { label: "stats or metrics instruction", test: (t) => /\b(stats?|metrics|numbers?|figures|coverage|counts?)\b/i.test(t) },
+                { label: "stats or metrics instruction", test: (t) => /\b(statistics|stats?|metrics|numbers?|figures|coverage|counts?)\b/i.test(t) },
                 { label: "analysis or insights instruction", test: (t) => /\b(analysis|insight|insights|trend|trends)\b/i.test(t) },
                 { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured|explicit)\b/i.test(t) || /\b(overview|stats snapshot|analysis|bi insights|recommended actions)\b/i.test(t) },
                 { label: "operational recommendations", test: (t) => /\b(recommend|action|steps?|stabilize|close|prepare|finish)\b/i.test(t) },
@@ -576,7 +576,7 @@ Best regards,
 Security Operations Team`,
             promptChecks: [
                 { label: "BI report framing", test: (t) => /\b(report|dashboard|summary|brief)\b/i.test(t) && /\b(bi|business intelligence|insights|metrics)\b/i.test(t) },
-                { label: "stats or metrics instruction", test: (t) => /\b(stats?|metrics|counts?|signals|monitoring)\b/i.test(t) },
+                { label: "stats or metrics instruction", test: (t) => /\b(statistics|stats?|metrics|counts?|signals|monitoring)\b/i.test(t) },
                 { label: "analysis or insights instruction", test: (t) => /\b(analysis|insight|insights|pattern|trend)\b/i.test(t) },
                 { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured|explicit)\b/i.test(t) || /\b(overview|stats snapshot|analysis|bi insights|recommended actions)\b/i.test(t) },
                 { label: "security and compliance context", test: (t) => /\b(mfa|credential|security|compliance|legal|regulatory)\b/i.test(t) },
@@ -646,7 +646,7 @@ Best regards,
 Supply Chain Analytics Team`,
             promptChecks: [
                 { label: "BI report framing", test: (t) => /\b(report|dashboard|summary|brief)\b/i.test(t) && /\b(bi|business intelligence|insights|metrics)\b/i.test(t) },
-                { label: "stats or metrics instruction", test: (t) => /\b(stats?|metrics|numbers?|figures|inventory|launch)\b/i.test(t) },
+                { label: "stats or metrics instruction", test: (t) => /\b(statistics|stats?|metrics|numbers?|figures|inventory|launch)\b/i.test(t) },
                 { label: "analysis or insights instruction", test: (t) => /\b(analysis|insight|insights|trend|implication)\b/i.test(t) },
                 { label: "explicit sections or headings", test: (t) => /\b(section|heading|structured|explicit)\b/i.test(t) || /\b(overview|stats snapshot|analysis|bi insights|recommended actions)\b/i.test(t) },
                 { label: "supply chain and operational context", test: (t) => /\b(supply chain|supplier|procurement|launch|inventory)\b/i.test(t) },

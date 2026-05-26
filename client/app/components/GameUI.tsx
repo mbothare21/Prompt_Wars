@@ -1724,7 +1724,7 @@ export default function GameUI() {
   const showHintNudge = hintAvailable && !hintOpen;
 
   return (
-    <div className={`${["splash","welcome","instructions","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-hidden" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
+    <div className={`${["splash","welcome","instructions","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-y-auto" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
 
       {/* Global Vignette and Scanlines */}
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>
@@ -2582,10 +2582,10 @@ export default function GameUI() {
                             <p className="text-amber-400/90 font-bold mb-2">What is a meta-prompt?</p>
                             <p className="text-slate-400 mb-2">A <span className="text-cyan-400">meta-prompt</span> is a prompt that instructs an AI to <span className="text-cyan-400">write another prompt</span> — not to answer the question directly, but to generate a detailed, structured prompt that someone else could use.</p>
                             <p className="text-amber-400/80 font-bold mt-3 mb-1">How to write one:</p>
-                            <p>✦ Tell the AI what <span className="text-cyan-400">role, tone, and sections</span> the final prompt must include</p>
-                            <p>✦ Specify <span className="text-cyan-400">output constraints</span> the final prompt should enforce (length, format, structure)</p>
-                            <p>✦ Look for <span className="text-cyan-400">hidden constraints</span> in the input data and make the generated prompt account for them</p>
-                            <p>✦ Think: what would a <span className="text-cyan-400">perfect prompt</span> for this scenario contain? Then instruct the AI to build exactly that</p>
+                            <p>✦ <span className="text-amber-300 font-bold">Name the exact sections</span> the output must contain — e.g. <span className="text-cyan-400">Overview, Stats Snapshot, Analysis, BI Insights, Recommended Actions</span></p>
+                            <p>✦ Tell the AI what <span className="text-cyan-400">role</span> to play and what <span className="text-cyan-400">tone</span> (professional, executive, concise) to use</p>
+                            <p>✦ Reference the <span className="text-cyan-400">domain context</span> from the input (supply chain, security, operations) so the compiled prompt stays on topic</p>
+                            <p>✦ Mention <span className="text-cyan-400">financial, customer, and operational impacts</span> that the generated prompt should address</p>
                             <p>✦ The more <span className="text-cyan-400">specific and detailed</span> your meta-prompt, the stronger the compiled prompt will be</p>
                           </div>
                         )}
