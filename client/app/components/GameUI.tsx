@@ -2029,7 +2029,7 @@ export default function GameUI() {
       {/* STEP 0: SPLASH SCREEN (INITIAL LOAD) */}
       {phase === "splash" && (
         <div className="w-full flex flex-col items-center justify-center text-center animate-in fade-in duration-1000 z-10">
-          <div className="relative mb-8">
+          <div className="relative mb-3 md:mb-6 lg:mb-8">
             <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full pointer-events-none"></div>
             <Image
               src="/neon-sign-escape-room-with-brick-wall-background-free-vector.jpg"
@@ -2038,18 +2038,18 @@ export default function GameUI() {
               height={800}
               priority
               sizes="(max-width: 768px) 100vw, 42rem"
-              className="relative w-full max-w-md md:max-w-lg mx-auto rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800 object-cover"
+              className="relative w-full max-w-xs sm:max-w-sm md:max-w-lg mx-auto max-h-[35vh] sm:max-h-[40vh] md:max-h-[45vh] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-slate-800 object-cover"
             />
           </div>
 
-          <h1 className="text-6xl md:text-8xl font-black mb-12 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter uppercase">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black mb-4 md:mb-8 lg:mb-12 text-transparent bg-clip-text bg-linear-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter uppercase">
             PROMPT <span className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]">WARS</span>
           </h1>
 
           <button
             type="button"
             onClick={() => setPhase("welcome")}
-            className="group relative px-12 py-4 bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-500/50 text-cyan-400 font-mono font-bold text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.2)] hover:shadow-[0_0_30px_rgba(8,145,178,0.5)]"
+            className="group relative px-10 md:px-12 py-3 md:py-4 bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-500/50 text-cyan-400 font-mono font-bold text-lg md:text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.2)] hover:shadow-[0_0_30px_rgba(8,145,178,0.5)]"
           >
             Enter
           </button>
@@ -2058,31 +2058,31 @@ export default function GameUI() {
 
       {/* STEP 1: LANDING PAGE (WELCOME) */}      
       {phase === "welcome" && (
-        <div className="w-full max-w-3xl terminal-panel p-10 md:p-16 rounded-xl relative text-center">
+        <div className="w-full max-w-3xl terminal-panel p-6 md:p-10 lg:p-16 rounded-xl relative text-center">
           <div className="screen-glare absolute inset-0 rounded-xl" />
 
           <div className="relative z-10">
-            <div className="inline-block mb-6 border border-amber-900/50 bg-amber-950/20 px-4 py-1 rounded text-amber-500 text-xs font-mono font-bold tracking-[0.3em] uppercase">
+            <div className="inline-block mb-3 md:mb-6 border border-amber-900/50 bg-amber-950/20 px-4 py-1 rounded text-amber-500 text-xs font-mono font-bold tracking-[0.3em] uppercase">
               Prompt Engineering Challenge
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-3 md:mb-4 text-transparent bg-clip-text bg-linear-to-b from-slate-100 to-slate-500 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] tracking-tighter">
               PROMPT <span className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]">WARS</span>
             </h1>
 
-            <div className="space-y-6 text-slate-300 text-sm md:text-base leading-relaxed text-left max-w-2xl mx-auto">
+            <div className="space-y-3 md:space-y-6 text-slate-300 text-xs md:text-sm leading-relaxed text-left max-w-2xl mx-auto">
 
-              <section className="bg-black/60 p-6 md:p-8 rounded border border-slate-700/50 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]">
-                <h2 className="text-lg font-mono font-bold text-cyan-400 mb-4 flex items-center gap-3 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
+              <section className="bg-black/60 p-4 md:p-6 lg:p-8 rounded border border-slate-700/50 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]">
+                <h2 className="text-sm md:text-lg font-mono font-bold text-cyan-400 mb-2 md:mb-4 flex items-center gap-3 uppercase tracking-widest border-b border-cyan-900/30 pb-2">
                   <span className="bg-cyan-500 w-2 h-2 rounded-full animate-pulse"></span> How It Works
                 </h2>
-                <p className="mb-4 text-slate-400">
+                <p className="mb-2 md:mb-4 text-slate-400">
                   <strong className="text-slate-200">Prompt Wars</strong> is a high-stress simulation designed to test your ability to command and manipulate AI systems using raw text constraints.
                 </p>
-                <p className="mb-6 text-slate-400">
+                <p className="mb-3 md:mb-6 text-slate-400">
                   There are <strong className="text-slate-200">5 sequential rounds</strong>. To progress through each round, you must craft a prompt that meets the target criteria.
                 </p>
-                <div className="bg-amber-950/20 border border-amber-900/50 p-4 rounded text-sm font-mono">
+                <div className="bg-amber-950/20 border border-amber-900/50 p-3 md:p-4 rounded text-xs md:text-sm font-mono">
                   <p className="text-amber-500/90">
                     <strong className="text-amber-400 block mb-1">WARNING: HIDDEN DIRECTIVE</strong>
                     Players who complete all 5 rounds before time runs out will unlock a hidden bonus challenge.
@@ -2090,23 +2090,23 @@ export default function GameUI() {
                 </div>
               </section>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-                <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
-                  <h2 className="text-green-500 font-bold mb-2 uppercase tracking-widest">🎯 Primary Objective</h2>
-                  <p className="text-slate-500 leading-relaxed">Complete all rounds with the highest accuracy and speed before the timer runs out. You always advance — failing a round records 0% for that round.</p>
+              <div className="grid grid-cols-2 gap-2 md:gap-4 font-mono text-xs">
+                <div className="bg-black/40 p-3 md:p-4 rounded border border-slate-800 flex flex-col justify-center">
+                  <h2 className="text-green-500 font-bold mb-1 md:mb-2 uppercase tracking-widest">🎯 Primary Objective</h2>
+                  <p className="text-slate-500 leading-relaxed">Complete all rounds with the highest accuracy and speed before the timer runs out. Failing a round records 0% for that round.</p>
                 </div>
-                <div className="bg-black/40 p-4 rounded border border-slate-800 flex flex-col justify-center">
-                  <h2 className="text-purple-400 font-bold mb-2 uppercase tracking-widest">🏆 Final Outcome</h2>
+                <div className="bg-black/40 p-3 md:p-4 rounded border border-slate-800 flex flex-col justify-center">
+                  <h2 className="text-purple-400 font-bold mb-1 md:mb-2 uppercase tracking-widest">🏆 Final Outcome</h2>
                   <p className="text-slate-500 leading-relaxed">Your results will be recorded on the leaderboard for ranking.</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center pt-10 mt-6 border-t border-slate-800/50">
+            <div className="flex flex-col items-center justify-center pt-5 md:pt-10 mt-4 md:mt-6 border-t border-slate-800/50">
               <button
                 type="button"
                 onClick={() => setPhase("instructions")}
-                className="group relative px-12 py-4 bg-cyan-700 hover:bg-cyan-600 border border-cyan-400 text-cyan-50 font-mono font-bold text-lg rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.4)] hover:shadow-[0_0_30px_rgba(8,145,178,0.6)]"
+                className="group relative w-full sm:w-auto px-8 md:px-12 py-3 md:py-4 bg-cyan-700 hover:bg-cyan-600 border border-cyan-400 text-cyan-50 font-mono font-bold text-base md:text-lg rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(8,145,178,0.4)] hover:shadow-[0_0_30px_rgba(8,145,178,0.6)]"
               >
                 View Rules
               </button>
