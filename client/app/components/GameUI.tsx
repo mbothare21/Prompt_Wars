@@ -411,7 +411,7 @@ export default function GameUI() {
   const syncRoundFromServer = useEffectEvent(() => {
     const sid = sessionRef.current;
     if (!sid || document.hidden || submittingRef.current) return;
-    void refreshRound(sid);
+    void refreshRound(sid).catch(() => {});
   });
 
   const tickCountdown = useEffectEvent(() => {
@@ -1118,7 +1118,7 @@ export default function GameUI() {
         } else {
           // No output to show (CLASSIFY or pre-eval case) — advance directly
           const sid = sessionRef.current;
-          if (sid) void refreshRound(sid);
+          if (sid) void refreshRound(sid).catch(() => {});
         }
         return;
       }
@@ -1267,7 +1267,7 @@ export default function GameUI() {
           passAdvanceTimeoutRef.current = setTimeout(() => {
             passAdvanceTimeoutRef.current = null;
             setLastResult(null);
-            void refreshRound(sid);
+            void refreshRound(sid).catch(() => {});
           }, PASS_ADVANCE_MS);
         }
         return;
@@ -1724,7 +1724,7 @@ export default function GameUI() {
   const showHintNudge = hintAvailable && !hintOpen;
 
   return (
-    <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
+    <div className={`${["splash","welcome","instructions","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-hidden" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
 
       {/* Global Vignette and Scanlines */}
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>
@@ -1861,7 +1861,7 @@ export default function GameUI() {
                             {previewRound.expectedOutput && (
                               <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                                 <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                                  Target Output
+                                  {adminRoundNumber === 3 ? "Sample Output" : "Target Output"}
                                   {adminRoundNumber === 2 && <span className="text-red-500/70 ml-2">(Classified)</span>}
                                 </h3>
                                 <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
@@ -2197,13 +2197,13 @@ export default function GameUI() {
               </section>
 
               <div className="flex flex-col items-center justify-center pt-8 mt-6 border-t border-slate-800">
-                <p className="text-amber-500/80 text-xs font-mono uppercase tracking-widest mb-6 animate-pulse">Ready? Proceed to registration.</p>
+                <p className="text-amber-500/80 text-xs font-mono uppercase tracking-widest mb-6 animate-pulse">I have read and understood the rules. Proceed to registration.</p>
                 <button
                   type="button"
                   onClick={() => setPhase("register")}
                   className="group relative px-16 py-4 bg-green-700 hover:bg-green-600 border border-green-400 text-green-50 font-mono font-bold text-xl rounded uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(21,128,61,0.4)] hover:shadow-[0_0_30px_rgba(21,128,61,0.6)]"
                 >
-                  Accept Terms
+                  Proceed
                 </button>
               </div>
 
@@ -2491,8 +2491,11 @@ export default function GameUI() {
                 {(roundNumber >= 1 && roundNumber <= 6) && (
                   <div className="relative">
                     {showHintNudge && (
-                      <div className="absolute -top-10 right-0 z-20 whitespace-nowrap rounded-full border border-amber-500/60 bg-amber-950/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-300 shadow-[0_0_18px_rgba(245,158,11,0.25)]">
-                        Need a hint?
+                      <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+                        <div className="whitespace-nowrap rounded-full border border-amber-500/60 bg-amber-950/95 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-300 shadow-[0_0_18px_rgba(245,158,11,0.25)]">
+                          Need a hint?
+                        </div>
+                        <div className="w-2 h-2 bg-amber-950 border-r border-b border-amber-500/60 rotate-45 -mt-1.25" />
                       </div>
                     )}
                     <button
@@ -2640,7 +2643,7 @@ export default function GameUI() {
                     </div>
                   )}
 
-                  {currentRoundData.type !== "BONUS" && (
+                  {currentRoundData.type !== "BONUS" && currentRoundData.type !== "REVERSE" && currentRoundData.type !== "IMPROVE" && currentRoundData.type !== "STRUCTURED" && (
                     <div className="bg-cyan-950/20 p-5 rounded border border-cyan-900/30 shrink-0">
                       <h3 className="text-sm uppercase tracking-widest text-cyan-500/70 mb-3 font-bold flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-cyan-500/70"></span> Output Constraints
@@ -2676,7 +2679,7 @@ export default function GameUI() {
                   {currentRoundData.expectedOutput && currentRoundData.type === "REVERSE" && (
                     <div className="bg-black/80 p-4 rounded border border-green-900/30 shrink-0 relative shadow-[inset_0_0_15px_rgba(22,163,74,0.1)]">
                       <h3 className="text-xs uppercase tracking-widest text-green-500/70 mb-2 font-bold">
-                        Target Output
+                        Sample Output
                       </h3>
                       <div className="font-mono text-xs text-green-400/80 whitespace-pre-wrap">
                         {currentRoundData.expectedOutput}
@@ -2924,7 +2927,7 @@ export default function GameUI() {
               setPreviousAttempt(null);
               setLastResult(null);
               const sid = sessionRef.current;
-              if (sid) void refreshRound(sid);
+              if (sid) void refreshRound(sid).catch(() => {});
             } else {
               setLastResult(null);
             }
@@ -2983,7 +2986,7 @@ export default function GameUI() {
                     setPreviousAttempt(null);
                     setLastResult(null);
                     const sid = sessionRef.current;
-                    if (sid) void refreshRound(sid);
+                    if (sid) void refreshRound(sid).catch(() => {});
                   } else {
                     setLastResult(null);
                   }
@@ -3069,7 +3072,7 @@ export default function GameUI() {
                     setPreviousAttempt(null);
                     setLastResult(null);
                     const sid = sessionRef.current;
-                    if (sid) void refreshRound(sid);
+                    if (sid) void refreshRound(sid).catch(() => {});
                   } else {
                     setLastResult(null);
                   }

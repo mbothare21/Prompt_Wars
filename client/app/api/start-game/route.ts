@@ -5,7 +5,7 @@ import { SESSION_TIME_LIMIT_MS } from "@/lib/gameConstants";
 import {
   bindEmailToSessionId,
   getBoundSessionIdForEmail,
-} from "@/lib/redis";
+} from "@/lib/gameStore";
 import { isTimeUp } from "@/lib/time";
 import type { GameSession } from "@/lib/types";
 import {
