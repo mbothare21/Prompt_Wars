@@ -1724,7 +1724,7 @@ export default function GameUI() {
   const showHintNudge = hintAvailable && !hintOpen;
 
   return (
-    <div className={`${phase === "instructions" ? "min-h-screen" : ["splash","welcome","register","orientation","admin-login"].includes(phase) ? "h-screen overflow-hidden" : "min-h-screen"} text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg`}>
+    <div className="min-h-screen text-slate-300 flex flex-col items-center justify-center p-4 md:p-8 font-sans selection:bg-amber-500/30 selection:text-amber-100 relative z-0 escape-bg">
 
       {/* Global Vignette and Scanlines */}
       <div className="fixed inset-0 z-[-1] grid-overlay pointer-events-none opacity-40"></div>

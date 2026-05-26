@@ -2,6 +2,7 @@ import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  root: path.resolve(__dirname, "./client"),
   test: {
     environment: "node",
     globals: true,
@@ -10,8 +11,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./"),
-      "server-only": path.resolve(__dirname, "./tests/server-only.ts"),
+      "@": path.resolve(__dirname, "./client"),
+      "server-only": path.resolve(__dirname, "./client/tests/server-only.ts"),
     },
   },
 });
