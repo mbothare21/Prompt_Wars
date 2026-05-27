@@ -5,6 +5,14 @@ import PlayerModel from "../models/Player";
 
 type PersistedGameStatus = GameStatus | "IN_PROGRESS";
 
+const TERMINAL_GAME_STATUSES: ReadonlyArray<GameStatus> = [
+  "COMPLETED",
+  "COMPLETED_WITH_BONUS",
+  "FAILED",
+  "TIME_OVER",
+  "DISQUALIFIED",
+];
+
 function getCreatedAt(session: GameSession): Date {
   return new Date(session.player.startedAt || session.startTime || Date.now());
 }
@@ -44,32 +52,54 @@ async function upsertPlayerSnapshot(
   const completedAt =
     gameStatus === "IN_PROGRESS" ? undefined : getCompletedAt(session);
 
-  await PlayerModel.updateOne(
-    { email: session.player.email },
-    {
-      $setOnInsert: {
-        ...getBaseInsertFields(session),
-        ...(location ? { location } : {}),
+  // Never downgrade a terminal record back to IN_PROGRESS. A stale or
+  // out-of-order progress snapshot must not erase a recorded completion.
+  const filter: Record<string, unknown> = { email: session.player.email };
+  if (gameStatus === "IN_PROGRESS") {
+    filter.gameStatus = { $nin: TERMINAL_GAME_STATUSES };
+  }
+
+  try {
+    await PlayerModel.updateOne(
+      filter,
+      {
+        $setOnInsert: {
+          ...getBaseInsertFields(session),
+          ...(location ? { location } : {}),
+        },
+        $set: {
+          name: session.player.name,
+          roundsPlayed: session.player.roundsPlayed,
+          roundsPassed: session.player.roundsPassed ?? session.player.roundsPlayed,
+          timeTaken: Math.max(0, Date.now() - session.startTime),
+          avgAccuracy: session.player.averageScore,
+          attemptsTaken: getTotalAttempts(session),
+          gameStatus,
+          lastActivityAt: new Date(),
+          rounds: session.pendingRounds ?? [],
+          ...(completedAt ? { completedAt } : {}),
+        },
+        $unset: {
+          ...(completedAt ? {} : { completedAt: "" }),
+          responseReport: "",
+        },
       },
-      $set: {
-        name: session.player.name,
-        roundsPlayed: session.player.roundsPlayed,
-        roundsPassed: session.player.roundsPassed ?? session.player.roundsPlayed,
-        timeTaken: Math.max(0, Date.now() - session.startTime),
-        avgAccuracy: session.player.averageScore,
-        attemptsTaken: getTotalAttempts(session),
-        gameStatus,
-        lastActivityAt: new Date(),
-        rounds: session.pendingRounds ?? [],
-        ...(completedAt ? { completedAt } : {}),
-      },
-      $unset: {
-        ...(completedAt ? {} : { completedAt: "" }),
-        responseReport: "",
-      },
-    },
-    { upsert: true }
-  );
+      { upsert: true }
+    );
+  } catch (error) {
+    // An IN_PROGRESS write whose filter excludes terminal docs can hit the
+    // unique-email index when the existing record is already terminal — that
+    // means a completion is already on file, so the stale progress write is
+    // intentionally a no-op.
+    if (gameStatus === "IN_PROGRESS" && isDuplicateKeyError(error)) return;
+    throw error;
+  }
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: number }).code;
+  return code === 11000 || code === 11001;
 }
 
 export async function findCompletedPlayerByEmail(email: string): Promise<boolean> {

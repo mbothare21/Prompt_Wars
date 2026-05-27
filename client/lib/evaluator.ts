@@ -279,6 +279,70 @@ function scoreConcreteStructuredSolution(input: string, output: string): number 
   return scoreTokenGrounding(output, input);
 }
 
+async function verifyStructuredSolution(
+  input: string,
+  output: string
+): Promise<number> {
+  if (!input.trim() || !output.trim()) return 0;
+
+  const key = cacheKey("verify-structured-v1", input, output);
+  const cached = cacheGet<number>(key);
+  if (cached !== undefined) return cached;
+
+  try {
+    const res = await callLLM(
+      getOpenAI().chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content: `You are a strict solution verifier for logic and constraint puzzles.
+
+You will receive a Puzzle and a Proposed Solution. Simulate the solution step-by-step from the initial state, tracking the puzzle state after every move.
+
+Verify three things independently:
+1. reachesGoal — Does the simulated FINAL state actually satisfy the puzzle's stated goal? If the goal is impossible or never reached, score 0. Do NOT award credit for solutions that only mention the goal in passing.
+2. stepsLegal — Is every move legal under the puzzle's rules (capacities, allowed operations, no contradictions)?
+3. answerCorrect — Is the explicit final numeric or factual answer correct (e.g. correct time, correct final volumes, correct order of moves)?
+
+Be strict. A solution with the right keywords but wrong arithmetic or an impossible goal must score low.
+
+Return JSON only — no markdown, no explanation:
+{"reachesGoal": <0-1>, "stepsLegal": <0-1>, "answerCorrect": <0-1>}`,
+          },
+          {
+            role: "user",
+            content: `Puzzle:\n${input}\n\nProposed solution:\n${output}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      })
+    );
+
+    const text = res.choices[0].message.content?.trim() ?? "{}";
+    const parsed = JSON.parse(text) as {
+      reachesGoal?: number;
+      stepsLegal?: number;
+      answerCorrect?: number;
+    };
+
+    const score = clamp(
+      0.45 * clamp(Number(parsed.reachesGoal ?? 0)) +
+        0.30 * clamp(Number(parsed.stepsLegal ?? 0)) +
+        0.25 * clamp(Number(parsed.answerCorrect ?? 0))
+    );
+
+    cacheSet(key, score);
+    return score;
+  } catch (error) {
+    console.error("[evaluator] structured verifier fallback to keyword scoring", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return scoreConcreteStructuredSolution(input, output);
+  }
+}
+
 function scoreChecks(text: string, checks: BonusCheck[]): number {
   const normalized = text.trim();
   if (!normalized) return 0;
@@ -440,21 +504,25 @@ Return JSON only — no markdown, no explanation:
 function buildStructuredRubric(): string {
   return `You are a scoring engine for a prompt-engineering game.
 
-The player's task: write a prompt that makes an AI solve a logic or constraint-based problem step-by-step, showing its reasoning explicitly.
+You will receive the Puzzle, the player's Prompt, and the AI's Output.
 
-Score using these explicit criteria.
+The player's task: write a prompt that makes an AI solve the puzzle step-by-step.
+
+You must reason about correctness, not just keywords. Simulate the puzzle mentally where needed.
 
 PROMPT score (0–1):
-• +0.30 if the prompt explicitly requests step-by-step or systematic reasoning
-• +0.25 if the prompt instructs the AI to identify constraints or rules before solving
-• +0.25 if the prompt requires a clearly labeled or structured final answer
-• +0.20 if the prompt assigns a relevant role or analytical persona
+• +0.20 if the prompt explicitly requests step-by-step or systematic reasoning
+• +0.15 if the prompt instructs the AI to identify constraints or rules before solving
+• +0.15 if the prompt requires a clearly labeled or structured final answer
+• +0.15 if the prompt assigns a relevant role or analytical persona
+• +0.35 if the goal stated or implied by the prompt is logically consistent with the puzzle's constraints. Award 0 here when the goal is impossible, self-contradictory, or violates a stated capacity/rule (e.g. asking for more liquid than a container can hold, or a state that cannot exist). This check is critical — do not skip it.
 
 OUTPUT score (0–1):
-• +0.40 if the output shows clear, explicit step-by-step reasoning
-• +0.30 if the output correctly identifies and applies the problem's constraints
-• +0.20 if the output has a clearly labeled final answer
-• +0.10 based on overall accuracy, clarity, and coherence
+• +0.20 if the output shows clear, explicit step-by-step reasoning
+• +0.25 if every step is legal under the puzzle's stated rules — no illegal moves, no operations the puzzle does not permit
+• +0.35 if the output's final state actually satisfies the puzzle's goal. Simulate each step from the initial state and verify the final state matches the goal. Do NOT award this for outputs that merely mention the goal without reaching it.
+• +0.10 if the output has a clearly labeled final answer
+• +0.10 based on overall clarity and coherence
 
 Return JSON only — no markdown, no explanation:
 {"quality": <output_score_0_to_1>, "prompt": <prompt_score_0_to_1>}`;
@@ -503,6 +571,7 @@ async function scoreCombined(
     roundType: "IMPROVE" | "OPTIMIZE" | "REVERSE" | "STRUCTURED";
     constraints?: unknown;
     expectedOutput?: string;
+    input?: string;
   }
 ): Promise<CombinedScores> {
   const key = cacheKey(
@@ -511,7 +580,8 @@ async function scoreCombined(
     output,
     context?.roundType ?? "",
     JSON.stringify(context?.constraints ?? null),
-    context?.expectedOutput ?? ""
+    context?.expectedOutput ?? "",
+    context?.roundType === "STRUCTURED" ? (context?.input ?? "") : ""
   );
   const cached = cacheGet<CombinedScores>(key);
   if (cached) return cached;
@@ -535,6 +605,11 @@ Return JSON only — no markdown, no explanation:
 }
 Score each from 0 to 1.`;
 
+  const userContent =
+    context?.roundType === "STRUCTURED" && context.input?.trim()
+      ? `Puzzle:\n${context.input}\n\nPrompt:\n${userPrompt}\n\nOutput:\n${output}`
+      : `Prompt:\n${userPrompt}\n\nOutput:\n${output}`;
+
   try {
     const res = await callLLM(
       getOpenAI().chat.completions.create({
@@ -542,7 +617,7 @@ Score each from 0 to 1.`;
         temperature: 0,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Prompt:\n${userPrompt}\n\nOutput:\n${output}` },
+          { role: "user", content: userContent },
         ],
         response_format: { type: "json_object" },
       })
@@ -1022,15 +1097,21 @@ async function scoreStructuredOutcome(
   const structureScore = evaluateStructure(output);
   const constraintScore = checkConstraints(round.constraints, prompt, output);
   const constraintCoverage = scorePromptConstraintCoverage(round.constraints, prompt);
-  const concreteSolutionScore = scoreConcreteStructuredSolution(round.input ?? "", output);
-  const rubric = await scoreCombined(prompt, output, { roundType: "STRUCTURED", constraints: round.constraints });
+  const [concreteSolutionScore, rubric] = await Promise.all([
+    verifyStructuredSolution(round.input ?? "", output),
+    scoreCombined(prompt, output, {
+      roundType: "STRUCTURED",
+      constraints: round.constraints,
+      input: round.input,
+    }),
+  ]);
   const promptScore = clamp(0.6 * rubric.prompt + 0.4 * constraintCoverage);
   const taskOutputScore = clamp(
-    0.20 * reasoningScore +
-    0.15 * structureScore +
-    0.25 * rubric.quality +
-    0.20 * constraintScore +
-    0.20 * concreteSolutionScore
+    0.15 * reasoningScore +
+    0.10 * structureScore +
+    0.20 * rubric.quality +
+    0.15 * constraintScore +
+    0.40 * concreteSolutionScore
   );
 
   return {

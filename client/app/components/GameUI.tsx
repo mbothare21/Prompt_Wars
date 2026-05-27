@@ -539,6 +539,18 @@ export default function GameUI() {
       const remaining = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
       gameEndedSecondsUsedRef.current = Math.max(0, initialSessionSecondsRef.current - remaining);
     }
+    // Nudge the server so it detects the terminal state (e.g. client-side
+    // time-up) and writes the final gameStatus to the DB before the
+    // leaderboard re-fetch — otherwise the record can linger on IN_PROGRESS.
+    const sid = sessionRef.current;
+    if (sid) {
+      void fetch("/api/get-round", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid }),
+        keepalive: true,
+      }).catch(() => {});
+    }
     setPhase("finished");
   }, []);
 
@@ -1275,19 +1287,32 @@ export default function GameUI() {
 
       if (status === "GAME_COMPLETED") {
         const gameStatus = data.gameStatus as string | undefined;
+        const attemptsUsedOnComplete = (data.attemptsThisRound as number | undefined) ?? 1;
         const adjustedFinalScore = roundNumber === 1
-          ? Math.max(0, finalScore - (((data.attemptsThisRound as number | undefined) ?? 1) - 1) * 0.05)
+          ? Math.max(0, finalScore - (attemptsUsedOnComplete - 1) * 0.05)
           : finalScore;
         setLastResult(buildLastResult(adjustedFinalScore, true));
-        setStats((prev) => ({
-          ...prev,
-          roundsCompleted: Math.max(prev.roundsCompleted, TOTAL_ROUNDS),
-          roundsPassed: Math.max(prev.roundsPassed ?? 0, TOTAL_ROUNDS),
-          bonusCompleted: Boolean(data.bonusUnlocked),
-          highScoreBonus: Boolean(data.highScoreBonus),
-          lastFinalScore: adjustedFinalScore,
-          terminalStatus: gameStatus === "COMPLETED_WITH_BONUS" ? "COMPLETED_WITH_BONUS" : "COMPLETED",
-        }));
+        setStats((prev) => {
+          const nextAccuracies = [...prev.accuracies];
+          nextAccuracies[roundNumber - 1] = Math.max(
+            nextAccuracies[roundNumber - 1] ?? 0,
+            adjustedFinalScore
+          );
+          return {
+            ...prev,
+            accuracies: nextAccuracies,
+            attemptsPerRound: {
+              ...prev.attemptsPerRound,
+              [roundNumber]: attemptsUsedOnComplete,
+            },
+            roundsCompleted: Math.max(prev.roundsCompleted, TOTAL_ROUNDS),
+            roundsPassed: Math.max(prev.roundsPassed ?? 0, TOTAL_ROUNDS),
+            bonusCompleted: Boolean(data.bonusUnlocked),
+            highScoreBonus: Boolean(data.highScoreBonus),
+            lastFinalScore: adjustedFinalScore,
+            terminalStatus: gameStatus === "COMPLETED_WITH_BONUS" ? "COMPLETED_WITH_BONUS" : "COMPLETED",
+          };
+        });
 
         // For BONUS round: show the generated output in a modal before finishing; auto-closes after 15s
         if (isBonus) {
@@ -3253,26 +3278,6 @@ export default function GameUI() {
                 </div>
               )}
 
-              {(metaPromptInput || generatedPrompt) && (
-                <div className="mt-6 border-t border-slate-800 pt-6">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-purple-500 mb-4 flex items-center gap-2">
-                    <span className="bg-purple-500/40 w-1.5 h-1.5 rounded-full inline-block"></span>
-                    Bonus Round
-                  </h3>
-                  {metaPromptInput && (
-                    <div className="mb-4">
-                      <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">Meta-Prompt</div>
-                      <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap bg-slate-900 border border-slate-800 rounded p-3 leading-relaxed">{metaPromptInput}</pre>
-                    </div>
-                  )}
-                  {generatedPrompt && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">Generated Prompt</div>
-                      <pre className="text-xs font-mono text-purple-300/80 whitespace-pre-wrap bg-slate-900 border border-purple-900/30 rounded p-3 leading-relaxed">{generatedPrompt}</pre>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
