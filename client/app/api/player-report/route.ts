@@ -4,6 +4,7 @@ import { generateRoundTips, type RoundContext } from "@/lib/roundTips";
 import { getRounds } from "@/lib/roundsStore";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
+import { buildPlayerReportHtml, buildReportFilename } from "@server/lib/playerReport";
 
 export const runtime = "nodejs";
 
@@ -43,20 +44,21 @@ export async function GET(req: Request) {
 
     const doc = (await PlayerModel.findOne({ email })
       .select(
-        "name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds"
+        "name email sessionId roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds"
       )
-      .lean()) as RawAdminPlayerDoc | null;
+      .lean()) as (RawAdminPlayerDoc & { sessionId?: string }) | null;
 
     if (!doc) {
       return Response.json({ error: "Player not found" }, { status: 404 });
     }
 
     const player = toAdminPlayerExport(doc);
+    const resolvedSessionId = sessionId ?? doc.sessionId;
 
     const roundContexts: Record<number, RoundContext> = {};
-    if (sessionId) {
+    if (resolvedSessionId) {
       try {
-        const rounds = getRounds(sessionId);
+        const rounds = getRounds(resolvedSessionId);
         for (const r of rounds) {
           roundContexts[r.roundNumber] = {
             instruction: r.instruction ?? null,
@@ -70,7 +72,17 @@ export async function GET(req: Request) {
     }
 
     const tips = await generateRoundTips(player.rounds, roundContexts);
-    return Response.json({ player, tips });
+    const html = buildPlayerReportHtml(player, tips, resolvedSessionId);
+    const filename = buildReportFilename(player);
+
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
   } catch (e) {
     console.error("[player-report]", e);
     return Response.json({ error: "Failed to fetch player data" }, { status: 500 });

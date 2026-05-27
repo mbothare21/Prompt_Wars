@@ -12,6 +12,7 @@ const RoundSchema = new Schema({
 const PlayerSchema = new Schema({
   name: String,
   email: { type: String, unique: true },
+  sessionId: String,
 
   roundsPlayed: Number,
   roundsPassed: Number,

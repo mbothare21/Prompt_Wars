@@ -355,6 +355,11 @@ export async function POST(req: Request) {
         console.error("[evaluate] MongoDB completion error:", e)
       );
 
+      // timeTakenMs is the same pause-corrected value persisted to MongoDB
+      // — surface it so the Game Over screen can show the exact same duration
+      // (without drifting up during the bonus-result modal delay).
+      const timeTakenMs = Math.max(0, Date.now() - session.startTime);
+
       return Response.json({
         status: "GAME_COMPLETED",
         gameStatus: completedStatus,
@@ -363,6 +368,7 @@ export async function POST(req: Request) {
         ...result,
         finalScore,
         progress,
+        timeTakenMs,
       });
     }
 

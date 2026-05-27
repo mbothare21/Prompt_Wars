@@ -6,6 +6,7 @@ import {
 import { generateRoundTips } from "@/lib/roundTips";
 import { connectDB } from "@server/lib/mongodb";
 import PlayerModel from "@server/models/Player";
+import { buildPlayerReportHtml, buildReportFilename } from "@server/lib/playerReport";
 
 export const runtime = "nodejs";
 
@@ -37,8 +38,8 @@ export async function GET(req: Request) {
 
     const emailFilter = { email: { $regex: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } };
     const doc = (await PlayerModel.findOne(emailFilter)
-      .select("name email roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
-      .lean()) as RawAdminPlayerDoc | null;
+      .select("name email sessionId roundsPlayed timeTaken avgAccuracy attemptsTaken gameStatus createdAt completedAt rounds")
+      .lean()) as (RawAdminPlayerDoc & { sessionId?: string }) | null;
 
     if (!doc) {
       console.log("[player-responses] NOT_FOUND", { email });
@@ -52,7 +53,18 @@ export async function GET(req: Request) {
     } catch (e) {
       console.error("[admin/player-responses] tips generation failed:", e);
     }
-    return Response.json({ player, tips });
+
+    const html = buildPlayerReportHtml(player, tips, doc.sessionId);
+    const filename = buildReportFilename(player);
+
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
   } catch (e) {
     console.error("[admin/player-responses]", e);
     return Response.json({ error: "Failed to fetch player data" }, { status: 500 });

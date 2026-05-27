@@ -69,6 +69,7 @@ async function upsertPlayerSnapshot(
         },
         $set: {
           name: session.player.name,
+          sessionId: session.sessionId,
           roundsPlayed: session.player.roundsPlayed,
           roundsPassed: session.player.roundsPassed ?? session.player.roundsPlayed,
           timeTaken: Math.max(0, Date.now() - session.startTime),

@@ -686,6 +686,12 @@ export const ROUND_SET_COUNTS: Record<number, number> = {
     6: ROUND_6_SETS.length,
 };
 
+export function getRoundSetIndex(sessionId: string, round: number): number {
+    const count = ROUND_SET_COUNTS[round];
+    if (!count || count <= 0) return 0;
+    return sessionHash(sessionId, `r${round}`) % count;
+}
+
 export function getAdminPreviewRound(roundNumber: number, setIndex: number): Round {
     switch (roundNumber) {
         case 1: {
