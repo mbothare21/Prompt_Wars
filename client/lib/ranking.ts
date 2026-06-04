@@ -55,9 +55,10 @@ export function compareCompetitiveStanding(
   a: CompetitiveStandingInput,
   b: CompetitiveStandingInput
 ) {
+  // Criteria 1: rounds passed (more is better).
   if (b.roundsPassed !== a.roundsPassed) return b.roundsPassed - a.roundsPassed;
-  if (b.roundsPlayed !== a.roundsPlayed) return b.roundsPlayed - a.roundsPlayed;
 
+  // Criteria 2: accuracy + time composite (higher accuracy, then less time).
   const performanceA = getAccuracyTimeCompositeScore(
     a.averageScore,
     a.timeTakenMs
@@ -68,10 +69,7 @@ export function compareCompetitiveStanding(
   );
   if (performanceB !== performanceA) return performanceB - performanceA;
 
-  const avgAttemptsA = a.roundsPlayed > 0 ? a.attempts / a.roundsPlayed : a.attempts;
-  const avgAttemptsB = b.roundsPlayed > 0 ? b.attempts / b.roundsPlayed : b.attempts;
-  if (avgAttemptsA !== avgAttemptsB) return avgAttemptsA - avgAttemptsB;
-
+  // Criteria 3: overall (total) attempts (fewer is better).
   if (a.attempts !== b.attempts) return a.attempts - b.attempts;
 
   return a.name.localeCompare(b.name);

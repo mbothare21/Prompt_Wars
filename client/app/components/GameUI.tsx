@@ -623,11 +623,11 @@ export default function GameUI() {
       if (!alreadyPresent && (player.email || player.name)) {
         const completedAt = Date.now();
         const startedAt = gameStartedAtRef.current || (completedAt - SESSION_TIME_LIMIT_MS);
-        const leaderboardScores = stats.accuracies.map((score, idx) => (
-          isSummaryRoundFailed(idx + 1, score) ? 0 : score
-        ));
-        const avgScore = leaderboardScores.length > 0
-          ? leaderboardScores.reduce((a, b) => a + b, 0) / leaderboardScores.length
+        // Average the best score per round (failed rounds keep their best
+        // attempt, never forced to 0) so this matches the on-screen Avg
+        // Accuracy and the server-persisted avgAccuracy.
+        const avgScore = stats.accuracies.length > 0
+          ? stats.accuracies.reduce((a, b) => a + b, 0) / stats.accuracies.length
           : 0;
         const synthetic: LeaderboardEntry = {
           playerId: sessionId ?? `${player.email}-${startedAt}`,
@@ -1787,7 +1787,7 @@ export default function GameUI() {
                               <th className="p-3 font-bold w-10">#</th>
                               <th className="p-3 font-bold">Player</th>
                               <th className="p-3 font-bold text-center">Location</th>
-                              <th className="p-3 font-bold text-center">Rounds</th>
+                              <th className="p-3 font-bold text-center">Rounds Passed</th>
                               <th className="p-3 font-bold text-center">Duration</th>
                               <th className="p-3 font-bold text-center">Accuracy</th>
                               <th className="p-3 font-bold text-center">Attempts</th>
@@ -1806,7 +1806,10 @@ export default function GameUI() {
                                     {p.email && <div className="text-[10px] text-slate-600 mt-0.5">{p.email}</div>}
                                   </td>
                                   <td className="p-3 text-slate-500 text-center text-xs font-mono">{p.location ?? "—"}</td>
-                                  <td className="p-3 text-slate-400 text-center">{p.roundsPlayed}</td>
+                                  <td className="p-3 text-center">
+                                    <span className="text-cyan-300 font-bold">{p.roundsPassed}</span>
+                                    <span className="text-slate-600"> / {p.roundsPlayed}</span>
+                                  </td>
                                   <td className="p-3 text-slate-400 text-center">{formatTime(p.timeTakenSec)}</td>
                                   <td className="p-3 text-green-500 font-bold text-center">{(p.averageScore * 100).toFixed(1)}%</td>
                                   <td className="p-3 text-slate-500 text-center">{p.attemptsUsed}</td>
